@@ -40,14 +40,41 @@
 
 ---
 
+## Capability-Driven Design
+
+> The CLI defines syntax. The board decides execution.
+
+TRT's core design principle is that **command support is determined at runtime by the board, not at compile time by trt-cli**.
+
+```
+User:  trt board board1 dac read 1
+         │
+         │  trt-cli always sends the command — no pre-filtering
+         ▼
+       TRT Protocol frame  →  board1
+         │
+         ├── board1 HAS DAC?  →  DATA response  →  "1.65V"
+         └── board1 NO DAC?   →  NACK response  →  "ERROR_UNSUPPORTED_COMMAND"
+```
+
+This means:
+- `trt-cli` never needs board-specific logic
+- New board types work without changing the CLI
+- The same CLI supports STM32, Arduino, RP2040, simulators, and future boards
+- `trt board board1 dac read 1` is always valid CLI syntax regardless of board type
+
+See [trt-protocol.md § 3. Capability-Driven Architecture](trt-protocol.md#3-capability-driven-architecture) for the full design rationale.
+
+---
+
 ## trt-cli Layer (Current)
 
 ### Responsibilities
 - Parse and route user commands
 - Display formatted terminal output (Rich)
 - Maintain an in-memory BoardRegistry
-- Gate commands on board capabilities
-- Provide mock implementations for all commands
+- Forward all commands to the board; display whatever the board returns
+- Provide mock implementations for all commands (milestone 1)
 
 ### Key Components
 
@@ -61,12 +88,52 @@ One module per command domain:
 |----------------|----------------------------------------|
 | `help.py`      | `trt help`                             |
 | `version.py`   | `trt version`                          |
+| `update.py`    | `trt update`                           |
 | `boards.py`    | `trt boards`                           |
 | `discover.py`  | `trt discover`                         |
 | `board.py`     | `trt board <id> *` (full sub-tree)     |
 | `lcd.py`       | `trt lcd *`                            |
 | `led.py`       | `trt led *`                            |
 | `protocol.py`  | `trt protocol *`                       |
+
+#### `trt/services/`
+Business-logic service layer, independent of the CLI presentation layer.
+Services are called by command handlers and can be tested in isolation.
+
+| Module               | Responsibility                                   |
+|----------------------|--------------------------------------------------|
+| `update_service.py`  | GitHub release check · version comparison · install |
+
+**`update_service.py` architecture:**
+
+```
+check_for_update()          → UpdateCheckResult
+    status: UP_TO_DATE | UPDATE_AVAILABLE | CHECK_FAILED
+    current_version: str    (from trt.version — never hardcoded)
+    latest_version:  str    (from GitHub API tag_name)
+    release_url:     str
+    upgrade_command: str    (auto-detected: pip / pipx / uv)
+
+install_update()            → UpdateInstallResult
+    success:     bool
+    message:     str
+    new_version: str | None
+
+detect_install_method()     → InstallMethod (PIP | PIPX | UV | UNKNOWN)
+```
+
+**Update scope — two independent commands:**
+
+| Command | Scope |
+|---|---|
+| `trt update` | Updates the `trt-cli` Python package on the developer's machine |
+| `trt board <id> update` *(future)* | Updates firmware on a connected embedded board |
+
+These two update paths are completely independent and must never be conflated.
+
+**Phase 1 (current):**  Command exists, displays current version, GitHub check is a documented placeholder.
+
+**Phase 2:**  Real HTTP GET to `https://api.github.com/repos/AntonioTRT/TRT-cli/releases/latest`, semantic version comparison, install via detected package manager.
 
 #### `trt/core/models.py`
 All domain data structures — typed dataclasses with no external dependencies.
@@ -183,5 +250,18 @@ trt-protocol/      Binary message protocol (future)
 trt-core/          C/C++ firmware library (future)
 trt-modules/       Firmware peripheral drivers (future)
 ```
+
+## Protocol Specification
+
+The TRT Protocol V1 frame structure, field definitions, transport strategy, open questions, and design rationale are fully documented in:
+
+**[docs/trt-protocol.md](trt-protocol.md)**
+
+Key facts:
+- Frame: `SYNC | VERSION | FLAGS | BOARD_ID | SEQ_ID | COMMAND | LENGTH | PAYLOAD | CRC16`
+- Transport-agnostic: same frame over USB CDC, CAN FD, TCP/IP
+- V1 transport: USB CDC only
+- Supports chunked transfers for firmware updates and large payloads
+- `future-protocol.md` is superseded by `trt-protocol.md` for design decisions
 
 See [docs/vision.md](vision.md) for the full roadmap.

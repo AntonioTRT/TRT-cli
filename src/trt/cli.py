@@ -7,6 +7,7 @@ sub-command trees for complex domains.
 Command tree:
     trt help
     trt version
+    trt update
     trt boards
     trt discover
     trt board <id> info | status | reset | reboot | capabilities | modules
@@ -31,6 +32,7 @@ from trt.commands.help import show_help
 from trt.commands.lcd import app as lcd_app
 from trt.commands.led import app as led_app
 from trt.commands.protocol import app as protocol_app
+from trt.commands.update import run_update
 from trt.commands.version import show_version
 
 app = typer.Typer(
@@ -60,6 +62,28 @@ def help() -> None:
 def version() -> None:
     """Print the current TRT CLI version."""
     show_version()
+
+
+@app.command(help="Check for TRT CLI updates")
+def update(
+    install: bool = typer.Option(
+        False, "--install", "-i",
+        help="Install the latest version after confirming an update is available",
+    ),
+    check: bool = typer.Option(
+        False, "--check", "-c",
+        help="Check only — do not prompt for install (default behaviour)",
+    ),
+) -> None:
+    """Check GitHub for a newer version of TRT CLI.
+
+    With no flags this checks for updates and prints the result.
+    Use --install to also download and apply the update.
+
+    Note: This command updates the trt-cli application on your machine.
+    To update board firmware use:  trt board <id> update  (future command).
+    """
+    run_update(install=install, check_only=check)
 
 
 @app.command(help="List all known boards")

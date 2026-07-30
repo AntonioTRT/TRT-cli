@@ -14,6 +14,96 @@ trt --show-completion       Show completion script
 
 ---
 
+## Debug Flags
+
+TRT CLI supports four debug verbosity levels applied via repeated `-d` flags.
+These are global options that can precede any command.
+
+> **Not yet implemented.** Defined here as the official behaviour specification.
+> See [trt-protocol.md § 10. Debug Verbosity Levels](trt-protocol.md#10-debug-verbosity-levels) for full examples.
+
+| Flag | Level | What is shown |
+|---|---|---|
+| *(none)* | 0 | Normal user-facing output only |
+| `-d` | 1 | Command execution trace (board, SEQ_ID) |
+| `-dd` | 2 | TX frame hex dump |
+| `-ddd` | 3 | TX frame + field decode + CLI→command mapping |
+| `-dddd` | 4 | TX frame + RX frame + full decode + interpreted response |
+
+**Level 0 (normal):**
+```bash
+trt board board1 version
+```
+```
+TRT Core 0.1.0
+```
+
+**Level 1 (`-d`):**
+```bash
+trt -d board board1 version
+```
+```
+[D1] Executing VERSION on board1  (BOARD_ID=0x0002, SEQ=0x0001)
+TRT Core 0.1.0
+```
+
+**Level 2 (`-dd`):**
+```bash
+trt -dd board board1 version
+```
+```
+[D2] TX ───────────────────────────────────────────
+  AA 55 01 00 02 00 01 00 01 00 00 00 XX XX
+
+TRT Core 0.1.0
+```
+
+**Level 3 (`-ddd`):**
+```bash
+trt -ddd board board1 version
+```
+```
+[D3] TX ───────────────────────────────────────────
+  AA 55 01 00 02 00 01 00 01 00 00 00 XX XX
+
+[D3] Frame decode:
+  SYNC=AA55  VERSION=01  FLAGS=00  BOARD_ID=0x0002(board1)
+  SEQ_ID=0x0001  COMMAND=CMD_VERSION  LENGTH=0
+
+[D3] Command mapping:
+  CLI input : trt board board1 version
+  Category  : SYSTEM
+  Command   : CMD_VERSION
+
+TRT Core 0.1.0
+```
+
+**Level 4 (`-dddd`):**
+```bash
+trt -dddd board board1 version
+```
+```
+[D4] TX ───────────────────────────────────────────
+  AA 55 01 00 02 00 01 00 01 00 00 00 XX XX
+
+[D4] RX ───────────────────────────────────────────
+  AA 55 01 01 02 00 01 00 01 00 07 00 30 2E 31 2E 30 XX XX
+
+[D4] RX decode:
+  FLAGS=01(RESPONSE)  SEQ_ID=0x0001(match)  LENGTH=7
+  PAYLOAD="0.1.0"
+
+[D4] Decoded response: TYPE=DATA  VALUE="0.1.0"
+
+TRT Core 0.1.0
+```
+
+**Design notes:**
+- Debug output goes to `stderr`; command output goes to `stdout`
+- Scripts can suppress debug with `2>/dev/null` (Linux/macOS) or `2>$null` (PowerShell)
+
+---
+
 ## trt help
 
 Display the full command tree with descriptions.
@@ -37,6 +127,60 @@ trt version
 TRT CLI
 Version: 0.1.0
 ```
+
+---
+
+## trt update
+
+Check for a newer version of the TRT CLI application.
+
+> **Scope:** This command updates the `trt-cli` Python package on your machine.
+> It is entirely independent from board firmware updates (`trt board <id> update`, future).
+
+```bash
+trt update                  # Check for updates
+trt update --install        # Check and install if available
+trt update --check          # Explicit check-only (same as no flags)
+```
+
+| Option | Description |
+|---|---|
+| `--install` / `-i` | Download and install the latest version |
+| `--check` / `-c` | Check only, never prompt for install |
+
+**Phase 1 output (current):**
+```
+  Checking for updates…
+  Current version : 0.1.0
+  Install method  : pip
+  Checking         : GitHub releases (AntonioTRT/TRT-cli)
+
+  ✓ No update available.
+  GitHub release checking will be available in a future release.
+```
+
+**Phase 2 output (when update is available):**
+```
+  ╭─ Update available! ───────────────────────────────╮
+  │  Current version : 0.1.0                          │
+  │  Latest version  : 0.2.0                          │
+  │  https://github.com/AntonioTRT/TRT-cli/releases   │
+  ╰───────────────────────────────────────────────────╯
+
+  Run trt update --install to install it.
+```
+
+**GitHub API endpoint (Phase 2):**
+```
+GET https://api.github.com/repos/AntonioTRT/TRT-cli/releases/latest
+```
+
+**Supported install methods:**
+- `pip install --upgrade trt-cli` (standard pip)
+- `pipx upgrade trt-cli` (pipx managed)
+- `uv pip install --upgrade trt-cli` (uv managed)
+
+The install method is auto-detected at runtime.
 
 ---
 

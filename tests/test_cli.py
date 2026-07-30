@@ -3,9 +3,10 @@
 Covers:
     - Version functions
     - Core data models and board registry
-    - Top-level CLI commands (help, version, boards, discover)
+    - Top-level CLI commands (help, version, update, boards, discover)
     - Board sub-commands (info, status, capabilities, gpio, pwm, adc, dac, i2c, spi, debug)
     - LCD, LED, Protocol command groups
+    - Update service layer
     - Unknown command error handling
 """
 
@@ -23,6 +24,15 @@ from trt.core.models import (
     TransportConfig,
     TransportType,
     make_mock_registry,
+)
+from trt.services.update_service import (
+    InstallMethod,
+    UpdateStatus,
+    _is_newer,
+    _parse_version,
+    check_for_update,
+    detect_install_method,
+    install_update,
 )
 from trt.version import get_version, get_version_info
 
@@ -63,10 +73,84 @@ class TestHelpCommand:
         assert "gpio" in result.stdout
         assert "pwm" in result.stdout
 
+    def test_help_shows_update(self) -> None:
+        result = runner.invoke(app, ["help"])
+        assert "update" in result.stdout
+
     def test_no_args_shows_usage(self) -> None:
         result = runner.invoke(app, [])
         # Typer with no_args_is_help=True returns exit code 2 (no-op help)
         assert result.exit_code in (0, 2)
+
+
+# ---------------------------------------------------------------------------
+# Update command
+# ---------------------------------------------------------------------------
+
+class TestUpdateCommand:
+    def test_update_exits_ok(self) -> None:
+        result = runner.invoke(app, ["update"])
+        assert result.exit_code == 0
+
+    def test_update_shows_current_version(self) -> None:
+        result = runner.invoke(app, ["update"])
+        assert get_version() in result.stdout
+
+    def test_update_check_flag(self) -> None:
+        result = runner.invoke(app, ["update", "--check"])
+        assert result.exit_code == 0
+
+    def test_update_install_flag_no_crash(self) -> None:
+        # install flag runs but falls through to Phase 1 placeholder
+        result = runner.invoke(app, ["update", "--install"])
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Update service layer
+# ---------------------------------------------------------------------------
+
+class TestUpdateService:
+    def test_parse_version_plain(self) -> None:
+        assert _parse_version("0.1.0") == (0, 1, 0)
+
+    def test_parse_version_with_v_prefix(self) -> None:
+        assert _parse_version("v0.2.0") == (0, 2, 0)
+
+    def test_parse_version_prerelease_stripped(self) -> None:
+        assert _parse_version("v1.0.0-beta.1") == (1, 0, 0)
+
+    def test_is_newer_true(self) -> None:
+        assert _is_newer("0.2.0", "0.1.0") is True
+
+    def test_is_newer_false_same(self) -> None:
+        assert _is_newer("0.1.0", "0.1.0") is False
+
+    def test_is_newer_false_older(self) -> None:
+        assert _is_newer("0.0.9", "0.1.0") is False
+
+    def test_check_for_update_returns_result(self) -> None:
+        result = check_for_update()
+        assert result.current_version == get_version()
+        assert result.status in UpdateStatus.__members__.values()
+
+    def test_check_for_update_phase1_up_to_date(self) -> None:
+        # Phase 1: always returns UP_TO_DATE (no real HTTP)
+        result = check_for_update()
+        assert result.status == UpdateStatus.UP_TO_DATE
+
+    def test_install_update_returns_result(self) -> None:
+        result = install_update()
+        assert isinstance(result.success, bool)
+        assert isinstance(result.message, str)
+
+    def test_detect_install_method_returns_method(self) -> None:
+        method = detect_install_method()
+        assert isinstance(method, InstallMethod)
+
+    def test_upgrade_command_contains_package_name(self) -> None:
+        result = check_for_update()
+        assert "trt-cli" in result.upgrade_command
 
 
 # ---------------------------------------------------------------------------

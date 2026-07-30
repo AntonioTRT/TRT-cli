@@ -35,6 +35,7 @@ def show_help() -> None:
 
     top.add_row("trt help", "Show this help message")
     top.add_row("trt version", "Display TRT CLI version")
+    top.add_row("trt update", "Check for TRT CLI updates")
     top.add_row("trt boards", "List all known boards")
     top.add_row("trt discover", "Rescan for connected boards (USB)")
     top.add_row("trt board <board> ...", "Operate on a specific board")

@@ -45,7 +45,7 @@ dev = [
 trt = "trt.cli:main"
 
 [tool.setuptools]
-packages = ["trt", "trt.commands", "trt.core"]
+packages = ["trt", "trt.commands", "trt.core", "trt.services"]
 
 [tool.setuptools.package-dir]
 "" = "src"

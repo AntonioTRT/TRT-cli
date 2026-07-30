@@ -34,9 +34,12 @@ trt-modules    ← future: firmware module drivers
 | Rich help output                     | ✅ Complete    |
 | Board models (capability-based)      | ✅ Complete    |
 | Mock boards (`boards`, `discover`)   | ✅ Complete    |
+| `trt update` command (Phase 1)       | ✅ Complete    |
 | Architecture documentation           | ✅ Complete    |
+| TRT Protocol V1 specification        | ✅ Complete    |
 | Hardware communication               | 🔜 Future      |
-| TRT Protocol                         | 🔜 Future      |
+| TRT Protocol V1 implementation       | 🔜 Future      |
+| `trt update` GitHub check (Phase 2)  | 🔜 Future      |
 
 ---
 
@@ -57,6 +60,7 @@ Requires Python 3.13 or later.
 ```bash
 trt help
 trt version
+trt update
 trt boards
 trt discover
 
@@ -81,6 +85,7 @@ trt protocol info
 trt
 ├── help
 ├── version
+├── update
 ├── boards
 ├── discover
 │
@@ -183,12 +188,13 @@ ruff check src/
 
 ## Documentation
 
-| Document                                        | Contents                            |
+| Document | Contents |
 |-------------------------------------------------|-------------------------------------|
-| [docs/vision.md](docs/vision.md)               | Mission, goals, roadmap             |
-| [docs/architecture.md](docs/architecture.md)   | System design, layers, extension    |
-| [docs/cli-reference.md](docs/cli-reference.md) | Full command reference with examples|
-| [docs/future-protocol.md](docs/future-protocol.md) | TRT Protocol design notes       |
+| [docs/vision.md](docs/vision.md) | Mission, goals, roadmap |
+| [docs/architecture.md](docs/architecture.md) | System design, layers, extension |
+| [docs/trt-protocol.md](docs/trt-protocol.md) | **TRT Protocol V1 specification** (frame structure, fields, transport, open questions) |
+| [docs/cli-reference.md](docs/cli-reference.md) | Full command reference with examples |
+| [docs/future-protocol.md](docs/future-protocol.md) | Earlier protocol sketch (superseded by trt-protocol.md) |
 
 ---
 
