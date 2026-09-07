@@ -25,6 +25,8 @@ from trt.core.models import (
     TransportType,
     make_mock_registry,
 )
+from trt.services.board_service import BoardService
+from trt.services.capability_service import CapabilityService
 from trt.services.update_service import (
     InstallMethod,
     UpdateStatus,
@@ -459,6 +461,24 @@ class TestIntegration:
     def test_invalid_command_fails(self) -> None:
         result = runner.invoke(app, ["thisdoesnotexist"])
         assert result.exit_code != 0
+
+
+class TestArchitectureServices:
+    def test_service_can_resolve_board_and_capability(self) -> None:
+        service = BoardService()
+        board = service.get_board("board0")
+        assert board is not None
+        assert board.identity.board_id == "board0"
+
+        capability_service = CapabilityService()
+        assert capability_service.supports(board, "gpio") is True
+        assert capability_service.supports(board, "missing_cap") is False
+
+    def test_protocol_client_returns_mock_response(self) -> None:
+        service = BoardService()
+        result = service.read_gpio("board0", "PA5")
+        assert result.status == "ok"
+        assert "PA5" in result.payload
 
 
 if __name__ == "__main__":

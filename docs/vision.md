@@ -2,114 +2,142 @@
 
 ## Mission
 
-> *TRT is a modular hardware control ecosystem for embedded boards and expansion modules.*
+TRT provides a unified command surface for embedded hardware control. The project exists to make hardware interaction feel as ordinary as using developer tools such as `git`, `docker`, or `kubectl`.
 
-TRT makes controlling embedded hardware as natural as using `git` or `docker`.  A single command — `trt` — should work uniformly regardless of:
+The repository is intentionally designed around a layered architecture:
 
-- Which board is connected (TRT_CORE, Arduino, RP2040, future custom boards)
-- Which operating system the developer is on (Windows, Linux, macOS)
-- Which transport is in use (USB today; CAN and TCP in future releases)
+CLI Layer
+    ↓
+Application Services
+    ↓
+Protocol Layer
+    ↓
+Transport Layer
+    ↓
+Device Layer
 
----
-
-## The Problem TRT Solves
-
-Today, working with embedded hardware typically requires:
-
-- Vendor-specific GUIs (STM32CubeIDE, Arduino IDE, Thonny)
-- Custom Python scripts with direct serial access
-- Board-specific one-off terminal tools
-- Different workflows for different boards
-
-None of these tools compose, none are scriptable, and none share a common model.
-
-TRT is the unified alternative.
+This architecture helps TRT remain board-agnostic, capability-driven, and ready for future protocol and transport implementations.
 
 ---
 
-## Design Goals
+## The problem TRT solves
+
+Embedded engineers usually face a fragmented toolchain:
+
+- vendor-specific IDEs and GUIs
+- board-specific scripts
+- direct serial handling in custom tools
+- mixed hardware interfaces across different devices
+
+TRT aims to replace that with a single consistent interface that continues to work across board types and communication methods.
+
+---
+
+## Design goals
 
 ### 1. Unified CLI
-One command, one mental model.  `trt board board0 gpio write PA5 1` works the same whether `board0` is a TRT_CORE, an Arduino, or a simulator.
+One command surface, one mental model, and consistent behavior across hardware.
 
-### 2. Capability-based, not MCU-based
-Boards advertise what they can do.  The CLI adapts to capabilities.  There is no `--stm32` flag.
+### 2. Capability-driven design
+Boards will advertise support for GPIO, PWM, ADC, DAC, I2C, SPI, and similar capabilities. The command layer should not hard-code board families or silicon assumptions.
 
-### 3. Extensible without restructuring
-Adding a new board type, transport, or command never requires reorganising the codebase.  Every layer has clear extension points.
+### 3. Protocol abstraction
+The service layer should not know whether a device is reached over USB, CAN, or TCP. The protocol client should provide a consistent request/response abstraction.
 
-### 4. Scriptable and automatable
-`trt` commands produce clean output suitable for shell scripting, CI pipelines, and test automation.
+### 4. Transport abstraction
+The transport layer is intentionally designed to be replaceable. Future USB, CAN, and TCP adapters should be compatible with the same protocol client interface.
 
-### 5. Cross-platform
-Full feature parity on Windows, Linux, and macOS.
-
----
-
-## Supported Boards (Current and Planned)
-
-| Board Type    | Status  | Notes                                  |
-|---------------|---------|----------------------------------------|
-| TRT_CORE      | Planned | Reference TRT board                    |
-| Arduino       | Planned | Arduino-compatible boards              |
-| RP2040        | Planned | Raspberry Pi RP2040-based boards       |
-| Simulator     | Planned | Software simulator, no hardware needed |
-| Custom        | Planned | Any board implementing TRT Protocol    |
+### 5. Testability and portability
+The architecture separates CLI rendering, service orchestration, and mock transport behavior so the project remains easier to test, reason about, and port to another language in the future.
 
 ---
 
-## Supported Transports (Current and Planned)
+## Current implementation status
 
-| Transport | Status  | Notes                     |
-|-----------|---------|---------------------------|
-| USB       | Planned | USB CDC (milestone 2)     |
-| CAN       | Future  | CAN bus, multi-device     |
-| TCP       | Future  | Ethernet / network boards |
-| Simulator | Future  | In-process simulation     |
+The repo currently delivers the foundation of that vision:
 
----
+- command layer exists
+- board and capability domain models exist
+- service layer exists
+- protocol request/response abstractions exist
+- mock transport implementation exists
 
-## Roadmap
+The remaining parts are intentionally deferred and remain future work:
 
-### Milestone 1 — CLI Foundation (0.1.0) ✅
-- Clean repository structure
-- Full command tree scaffolded
-- Rich terminal output
-- Board models (capability-based)
-- Mock board data
-- Architecture and documentation
-
-### Milestone 2 — USB Transport (0.2.0)
-- TRT Protocol specification (trt-protocol)
-- USB CDC transport implementation
-- Real board discovery via USB
-- Board capability handshake
-- GPIO read/write over USB
-
-### Milestone 3 — Full Hardware Abstraction (0.3.0)
-- PWM, ADC, DAC over TRT Protocol
-- I2C and SPI master operations
-- LCD and LED peripheral support
-- Debug shell over USB
-
-### Milestone 4 — Extended Transports (0.4.0)
-- CAN bus transport
-- TCP/Ethernet transport
-- Multi-board sessions
-
-### Milestone 5 — Ecosystem (1.0.0)
-- Stable TRT Protocol v1.0
-- trt-core firmware library (C/C++)
-- trt-modules driver collection
-- Plugin / extension API
+- real board discovery
+- real protocol framing
+- real hardware communication
+- real USB/CAN/TCP layers
 
 ---
 
-## Related Repositories (Future)
+## Supported boards and transports
 
-| Repository      | Purpose                                                    |
-|-----------------|------------------------------------------------------------|
-| `trt-cli`       | This repository — CLI frontend                             |
-| `trt-protocol`  | Binary communication protocol specification + Python impl  |
-| `trt-core`      | C/C++ firmware library for TRT-compatible boards           |
-| `trt-modules`   | Firmware module drivers (GPIO, PWM, I2C, SPI, LCD, LED)    |
+### Boards
+
+| Board Type | Status | Notes |
+|---|---|---|
+| TRT_CORE | Planned | Reference TRT board |
+| Arduino | Planned | Arduino-compatible boards |
+| RP2040 | Planned | Common embedded target |
+| Simulator | Planned | Mock in-process device |
+| Custom | Planned | Any board implementing the TRT protocol |
+
+### Transports
+
+| Transport | Status | Notes |
+|---|---|---|
+| USB | Planned | Future USB CDC transport |
+| CAN | Planned | Future CAN bus support |
+| TCP | Planned | Future Ethernet transport |
+| Mock | Implemented | Current CLI behavior |
+
+---
+
+## Long-term roadmap
+
+### Milestone 1 — CLI foundation ✅
+- CLI scaffold and command structure
+- Rich help and output
+- typed domain model
+- mock board registry
+- service layer and protocol abstractions
+
+### Milestone 2 — Real protocol client
+- implement real protocol request/response flow
+- expand protocol model definitions
+- begin board capability negotiation
+
+### Milestone 3 — Real transport adapters
+- USB transport implementation
+- CAN transport implementation
+- TCP transport implementation
+
+### Milestone 4 — Hardware ecosystem integration
+- actual device discovery
+- capability-driven command execution
+- board firmware integration
+
+### Milestone 5 — System maturity
+- stable protocol version
+- shared firmware ecosystem
+- reusable module and driver libraries
+
+---
+
+## Why the architecture matters
+
+The project is intentionally designed so that the user-facing command syntax stays stable even as the lower layers evolve. That allows the repository to preserve a consistent CLI while implementing the real protocol and transport layers later.
+
+The architecture also improves maintainability by separating concerns in a way that supports future migration to Go or another language without rewriting the command semantics from scratch.
+
+---
+
+## Related repositories (future)
+
+| Repository | Purpose |
+|---|---|
+| trt-cli | CLI frontend and service orchestration |
+| trt-protocol | binary protocol specification and real protocol implementation |
+| trt-core | firmware library for TRT-compatible boards |
+| trt-modules | firmware module drivers and board capabilities |

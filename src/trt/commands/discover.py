@@ -3,7 +3,7 @@
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from trt.core.models import make_mock_registry
+from trt.services.board_discovery_service import BoardDiscoveryService
 
 console = Console()
 
@@ -32,8 +32,8 @@ def run_discover() -> None:
         import time
         time.sleep(0.8)  # Simulate scan latency
 
-    registry = make_mock_registry()
-    boards = registry.all()
+    service = BoardDiscoveryService()
+    boards = service.discover()
 
     console.print(f"  [bold green]Discovery complete.[/bold green]  Found [cyan]{len(boards)}[/cyan] board(s).\n")
 

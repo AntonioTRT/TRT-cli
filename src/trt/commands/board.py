@@ -23,7 +23,8 @@ from typing import Optional
 import typer
 from rich.console import Console
 
-from trt.core.models import make_mock_registry
+from trt.services.board_service import BoardService
+from trt.services.capability_service import CapabilityService
 
 console = Console()
 
@@ -46,8 +47,8 @@ def board_info(
     board_id: str = typer.Argument(..., help="Board identifier, e.g. board0"),
 ) -> None:
     """Display board identity from the registry."""
-    registry = make_mock_registry()
-    board = registry.get(board_id)
+    service = BoardService()
+    board = service.get_board(board_id)
     console.print()
     if board is None:
         _board_not_found(board_id)
@@ -74,8 +75,8 @@ def board_status(
     board_id: str = typer.Argument(..., help="Board identifier"),
 ) -> None:
     """Show the operational status of the board."""
-    registry = make_mock_registry()
-    board = registry.get(board_id)
+    service = BoardService()
+    board = service.get_board(board_id)
     console.print()
     if board is None:
         _board_not_found(board_id)
@@ -106,8 +107,8 @@ def board_capabilities(
     board_id: str = typer.Argument(..., help="Board identifier"),
 ) -> None:
     """List capabilities advertised by the board."""
-    registry = make_mock_registry()
-    board = registry.get(board_id)
+    service = BoardService()
+    board = service.get_board(board_id)
     console.print()
     if board is None:
         _board_not_found(board_id)
@@ -453,17 +454,19 @@ def debug_shell(
 # ---------------------------------------------------------------------------
 
 def _require_board(board_id: str, capability: Optional[str] = None) -> None:
-    registry = make_mock_registry()
-    board = registry.get(board_id)
+    service = BoardService()
+    board = service.get_board(board_id)
     if board is None:
         _board_not_found(board_id)
         raise typer.Exit(1)
-    if capability and not board.capabilities.has(capability):
-        console.print(
-            f"\n  [yellow]Board [bold]{board_id}[/bold] does not advertise "
-            f"capability [bold]{capability}[/bold].[/yellow]\n"
-        )
-        raise typer.Exit(1)
+    if capability:
+        capability_service = CapabilityService()
+        if not capability_service.supports(board, capability):
+            console.print(
+                f"\n  [yellow]Board [bold]{board_id}[/bold] does not advertise "
+                f"capability [bold]{capability}[/bold].[/yellow]\n"
+            )
+            raise typer.Exit(1)
 
 
 def _board_not_found(board_id: str) -> None:

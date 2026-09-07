@@ -1,244 +1,243 @@
 # TRT Architecture
 
-## System Overview
+## System overview
 
+```text
+Developer / User
+      |
+      | trt <command>
+      v
+┌────────────────────────────────────────────────────────────┐
+│                       CLI Layer                             │
+│  Typer app, command registration, Rich output, UX         │
+│  src/trt/cli.py + src/trt/commands/*.py                  │
+└──────────────────────────────┬─────────────────────────────┘
+                               │
+                               v
+┌────────────────────────────────────────────────────────────┐
+│                Application Services Layer                   │
+│  BoardService, BoardDiscoveryService, CapabilityService    │
+│  src/trt/services/*.py                                     │
+└──────────────────────────────┬─────────────────────────────┘
+                               │
+                               v
+┌────────────────────────────────────────────────────────────┐
+│                     Protocol Layer                          │
+│  ProtocolRequest, ProtocolResponse, ProtocolClient,        │
+│  MockProtocolClient                                        │
+│  src/trt/protocol/*.py                                     │
+└──────────────────────────────┬─────────────────────────────┘
+                               │
+                               v
+┌────────────────────────────────────────────────────────────┐
+│                    Transport Layer                          │
+│  Transport interface, MockTransport                        │
+│  src/trt/transport/*.py                                    │
+└──────────────────────────────┬─────────────────────────────┘
+                               │
+                               v
+┌────────────────────────────────────────────────────────────┐
+│                    Mock Device Layer                        │
+│  Simulated GPIO, ADC, SPI, I2C interactions                 │
+│  intentional mock-only communication layer                  │
+└────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Developer / User                      │
-└────────────────────────┬────────────────────────────────┘
-                         │  trt <command>
-┌────────────────────────▼────────────────────────────────┐
-│                   trt-cli  (this repo)                   │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │  Typer App  ·  Command Router  ·  Rich Output   │    │
-│  └──────────────────────┬──────────────────────────┘    │
-│  ┌───────────────────────▼─────────────────────────┐    │
-│  │  BoardRegistry  ·  BoardCapabilities  ·  Models  │    │
-│  └─────────────────────────────────────────────────┘    │
-└────────────────────────┬────────────────────────────────┘
-                         │  TRT Protocol messages
-┌────────────────────────▼────────────────────────────────┐
-│              trt-protocol  (future repo)                 │
-│  Message serialisation  ·  CRC  ·  Versioning           │
-└────────────────────────┬────────────────────────────────┘
-                         │  USB CDC / CAN / TCP
-┌────────────────────────▼────────────────────────────────┐
-│               Transport Layer  (future)                  │
-│  USB (milestone 2)  ·  CAN (future)  ·  TCP (future)    │
-└────────────────────────┬────────────────────────────────┘
-                         │  physical connection
-┌────────────────────────▼────────────────────────────────┐
-│               Embedded Firmware  (future)                │
-│  trt-core  ·  trt-modules  ·  Board HAL                  │
-└────────────────────────┬────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│              Embedded Hardware                           │
-│  GPIO  ·  PWM  ·  ADC  ·  DAC  ·  I2C  ·  SPI  ·  ...  │
-└─────────────────────────────────────────────────────────┘
-```
+
+This is the target architecture used by the project today, even though the lower layers are mock implementations for the current phase.
 
 ---
 
-## Capability-Driven Design
+## Layer responsibilities
 
-> The CLI defines syntax. The board decides execution.
+### CLI Layer
 
-TRT's core design principle is that **command support is determined at runtime by the board, not at compile time by trt-cli**.
+Files:
+- [src/trt/cli.py](../src/trt/cli.py)
+- [src/trt/commands/board.py](../src/trt/commands/board.py)
+- [src/trt/commands/boards.py](../src/trt/commands/boards.py)
+- [src/trt/commands/discover.py](../src/trt/commands/discover.py)
 
-```
-User:  trt board board1 dac read 1
-         │
-         │  trt-cli always sends the command — no pre-filtering
-         ▼
-       TRT Protocol frame  →  board1
-         │
-         ├── board1 HAS DAC?  →  DATA response  →  "1.65V"
-         └── board1 NO DAC?   →  NACK response  →  "ERROR_UNSUPPORTED_COMMAND"
-```
+Responsibilities:
+- parse command-line arguments
+- invoke services
+- format console output
+- preserve the existing user experience
 
-This means:
-- `trt-cli` never needs board-specific logic
-- New board types work without changing the CLI
-- The same CLI supports STM32, Arduino, RP2040, simulators, and future boards
-- `trt board board1 dac read 1` is always valid CLI syntax regardless of board type
+This layer does not construct board registries directly anymore and no longer performs business rules from within the command functions.
 
-See [trt-protocol.md § 3. Capability-Driven Architecture](trt-protocol.md#3-capability-driven-architecture) for the full design rationale.
+### Application Services Layer
 
----
+Files:
+- [src/trt/services/board_service.py](../src/trt/services/board_service.py)
+- [src/trt/services/board_discovery_service.py](../src/trt/services/board_discovery_service.py)
+- [src/trt/services/capability_service.py](../src/trt/services/capability_service.py)
+- [src/trt/services/update_service.py](../src/trt/services/update_service.py)
 
-## trt-cli Layer (Current)
+Responsibilities:
+- board lookup and state coordination
+- capability enforcement
+- discovery orchestration
+- update checking/install preparation
 
-### Responsibilities
-- Parse and route user commands
-- Display formatted terminal output (Rich)
-- Maintain an in-memory BoardRegistry
-- Forward all commands to the board; display whatever the board returns
-- Provide mock implementations for all commands (milestone 1)
+This is the place where business logic belongs in the current project structure.
 
-### Key Components
+### Protocol Layer
 
-#### `trt/cli.py`
-Main Typer application.  Registers all top-level commands and sub-apps.
+Files:
+- [src/trt/protocol/models.py](../src/trt/protocol/models.py)
+- [src/trt/protocol/protocol_client.py](../src/trt/protocol/protocol_client.py)
 
-#### `trt/commands/`
-One module per command domain:
+Responsibilities:
+- define protocol request/response objects
+- hide transport choices from the service layer
+- provide a mock client for current behavior
 
-| Module         | Commands                               |
-|----------------|----------------------------------------|
-| `help.py`      | `trt help`                             |
-| `version.py`   | `trt version`                          |
-| `update.py`    | `trt update`                           |
-| `boards.py`    | `trt boards`                           |
-| `discover.py`  | `trt discover`                         |
-| `board.py`     | `trt board <id> *` (full sub-tree)     |
-| `lcd.py`       | `trt lcd *`                            |
-| `led.py`       | `trt led *`                            |
-| `protocol.py`  | `trt protocol *`                       |
+The current implementation is intentionally transport-independent and designed so that a future USB/CAN/TCP adapter can implement the same interface without changing service logic.
 
-#### `trt/services/`
-Business-logic service layer, independent of the CLI presentation layer.
-Services are called by command handlers and can be tested in isolation.
+### Transport Layer
 
-| Module               | Responsibility                                   |
-|----------------------|--------------------------------------------------|
-| `update_service.py`  | GitHub release check · version comparison · install |
+Files:
+- [src/trt/transport/base.py](../src/trt/transport/base.py)
+- [src/trt/transport/mock_transport.py](../src/trt/transport/mock_transport.py)
 
-**`update_service.py` architecture:**
+Responsibilities:
+- send protocol requests over a concrete transport
+- isolate the protocol layer from runtime transport concerns
+- define future extension points for USB/CAN/TCP transports
 
-```
-check_for_update()          → UpdateCheckResult
-    status: UP_TO_DATE | UPDATE_AVAILABLE | CHECK_FAILED
-    current_version: str    (from trt.version — never hardcoded)
-    latest_version:  str    (from GitHub API tag_name)
-    release_url:     str
-    upgrade_command: str    (auto-detected: pip / pipx / uv)
+### Domain Layer
 
-install_update()            → UpdateInstallResult
-    success:     bool
-    message:     str
-    new_version: str | None
+File:
+- [src/trt/core/models.py](../src/trt/core/models.py)
 
-detect_install_method()     → InstallMethod (PIP | PIPX | UV | UNKNOWN)
-```
+Responsibilities:
+- typed board and capability model definitions
+- board registry state
+- transport and capability metadata
 
-**Update scope — two independent commands:**
-
-| Command | Scope |
-|---|---|
-| `trt update` | Updates the `trt-cli` Python package on the developer's machine |
-| `trt board <id> update` *(future)* | Updates firmware on a connected embedded board |
-
-These two update paths are completely independent and must never be conflated.
-
-**Phase 1 (current):**  Command exists, displays current version, GitHub check is a documented placeholder.
-
-**Phase 2:**  Real HTTP GET to `https://api.github.com/repos/AntonioTRT/TRT-cli/releases/latest`, semantic version comparison, install via detected package manager.
-
-#### `trt/core/models.py`
-All domain data structures — typed dataclasses with no external dependencies.
-
-### Data Model
-
-```
-Board
-├── BoardIdentity       board_id, board_type, revision, firmware, serial
-├── BoardStatus         DISCONNECTED | CONNECTED | INITIALIZING | READY | ERROR | OFFLINE
-├── TransportConfig     transport_type, port, baudrate, timeout_ms
-└── BoardCapabilities   gpio, pwm, adc, dac, i2c, spi, uart, can, lcd, relay, debug_shell
-```
-
-`BoardRegistry` is the session-level store.  `make_mock_registry()` populates two mock boards for milestone 1.
+The domain layer remains framework-independent and portable.
 
 ---
 
-## Capability-Based Design
+## Current state vs future state
 
-A board **advertises** its capabilities at connection time (future: via TRT Protocol handshake).  The CLI reads these and gates commands accordingly.
+### Implemented today
 
-```python
-if not board.capabilities.has("gpio"):
-    raise CommandError("Board does not support GPIO")
-```
+- Typer CLI with rich output
+- mock board registry and mock discovery
+- board service layer
+- protocol request/response models
+- protocol client abstraction
+- mock transport abstraction
+- capability service
 
-This means:
-- The CLI never hard-codes board types.
-- An Arduino and a TRT_CORE board can coexist in the same session.
-- A future simulator board works without any CLI changes.
+### Planned for the future
 
-**Adding a new peripheral** requires only:
-1. Adding a field to `BoardCapabilities`.
-2. Creating a new command module.
-3. Registering it in `cli.py`.
+- real `trt-protocol` repo implementation
+- USB CDC transport implementation
+- CAN transport
+- TCP transport
+- real firmware capability handshake
+- real device discovery
 
----
-
-## Command Architecture
-
-### Naming Convention
-
-TRT follows the `<tool> <noun> <verb> [args]` pattern from `kubectl` and `docker`:
-
-```
-trt  board  board0  gpio  write  PA5  1
- │     │      │      │      │    │    │
-tool  noun   id    domain  verb  arg  arg
-```
-
-Top-level convenience commands (`lcd`, `led`) drop the board qualifier for brevity.
-
-### Sub-App Pattern (Typer)
-
-Each command group is a separate `typer.Typer()` instance added to the main app:
-
-```python
-app.add_typer(board_app, name="board")
-app.add_typer(lcd_app,   name="lcd")
-```
-
-Within `board_app`, each hardware domain is also a sub-app:
-
-```python
-board_app.add_typer(gpio_app, name="gpio")
-board_app.add_typer(pwm_app,  name="pwm")
-```
+This distinction is intentional: current code is mock-backed by design, not a production hardware stack.
 
 ---
 
-## Extension Points
+## Dependency flow
 
-### Adding a New Top-Level Command
-1. Create `src/trt/commands/mycommand.py` with a `typer.Typer()` instance or a plain function.
-2. Register in `src/trt/cli.py`.
+```text
+CLI
+  -> BoardService / DiscoveryService / CapabilityService
+      -> ProtocolClient
+          -> Transport
+              -> MockDevice
+```
 
-### Adding a New Board Sub-Command
-1. Create a sub-app in `src/trt/commands/board.py` (or a new file).
-2. Add it to `board_app` via `board_app.add_typer(...)`.
+Dependency direction rules now follow the intended architecture:
 
-### Adding a New Capability
-1. Add a field to `BoardCapabilities` in `src/trt/core/models.py`.
-2. Use `board.capabilities.has("my_cap")` to gate the new command.
+- CLI depends on services
+- Services depend on protocol and repository abstractions
+- Protocol depends on transport abstractions
+- Transport does not depend on CLI or services
+- Domain models remain independent
 
-### Adding a New Transport
-1. Add a value to `TransportType` enum.
-2. Extend `TransportConfig` with transport-specific fields.
-3. Implement the transport in `trt-protocol` (future repo).
-
-### Adding a New Board Type
-1. Add a value to `BoardType` enum.
-2. No other changes needed — capabilities handle the rest.
+This is the key improvement that makes the project more maintainable and more migration-friendly.
 
 ---
 
-## Testing Strategy
+## Capability-driven design
 
-| Layer              | Test Type    | Location                   |
-|--------------------|--------------|----------------------------|
-| CLI commands       | Integration  | `tests/test_cli.py`        |
-| Data models        | Unit         | `tests/test_cli.py`        |
-| Board registry     | Unit         | `tests/test_cli.py`        |
-| Transport (future) | Integration  | `tests/test_transport.py`  |
-| Protocol (future)  | Unit         | `tests/test_protocol.py`   |
+The domain and service layers enforce the capability-driven design principle.
+
+Examples:
+
+- `BoardCapabilities.has()` in [src/trt/core/models.py](../src/trt/core/models.py)
+- `CapabilityService.supports()` in [src/trt/services/capability_service.py](../src/trt/services/capability_service.py)
+- `_require_board()` in [src/trt/commands/board.py](../src/trt/commands/board.py)
+
+This keeps the CLI from hard-coding board family assumptions such as STM32, RP2040, or Arduino checks in the command layer.
+
+---
+
+## Protocol abstraction
+
+The protocol layer intentionally describes the data contract independent of hardware transport.
+
+Key abstractions:
+
+- `ProtocolRequest`: request payload for a device action
+- `ProtocolResponse`: response payload from a device action
+- `ProtocolClient`: abstract interface for sending protocol requests
+- `MockProtocolClient`: current mock implementation for tests and CLI execution
+
+This allows future real implementations to plug into the same service layer without changing CLI behavior.
+
+---
+
+## Transport abstraction
+
+The transport layer now defines the future extension points.
+
+Key abstractions:
+
+- `Transport`: abstract interface
+- `MockTransport`: current implementation used by the CLI
+
+Planned future implementations:
+
+- `USBTransport`
+- `CANTransport`
+- `TCPTransport`
+
+The important architectural point is that the protocol layer depends on the transport interface, not on a specific transport backend.
+
+---
+
+## Migration readiness
+
+The new architecture improves maintainability and future migration for several reasons:
+
+1. CLI concerns are separated from business logic.
+2. Domain and service contracts are more explicit.
+3. Protocol semantics are captured as models rather than hidden in command handlers.
+4. Transport-specific code is isolated behind an interface.
+5. The code is easier to reimplement in other languages such as Go without rewriting the command surface.
+
+---
+
+## Remaining future work
+
+The following are still intentionally deferred because the project is intentionally mock-based for the current phase:
+
+- real protocol framing and serialization
+- real USB enumeration and device scanning
+- real CAN and TCP transport adapters
+- real hardware capability negotiation
+- firmware-backed board discovery
+
+These remain future work and are not part of a production device integration layer yet.
+
 
 ---
 

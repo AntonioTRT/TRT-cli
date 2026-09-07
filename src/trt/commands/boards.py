@@ -3,7 +3,8 @@
 from rich.console import Console
 from rich.table import Table
 
-from trt.core.models import BoardStatus, make_mock_registry
+from trt.core.models import BoardStatus
+from trt.services.board_discovery_service import BoardDiscoveryService
 
 console = Console()
 
@@ -23,8 +24,8 @@ def show_boards() -> None:
     Mock implementation — real boards will be populated via USB discovery
     once TRT Protocol is implemented.
     """
-    registry = make_mock_registry()
-    boards = registry.all()
+    service = BoardDiscoveryService()
+    boards = service.discover()
 
     console.print()
 
