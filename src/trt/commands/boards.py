@@ -19,11 +19,7 @@ _STATUS_STYLE: dict[str, str] = {
 
 
 def show_boards() -> None:
-    """Display all boards currently known to TRT.
-
-    Mock implementation — real boards will be populated via USB discovery
-    once TRT Protocol is implemented.
-    """
+    """Display all boards currently known to TRT."""
     service = BoardDiscoveryService()
     boards = service.discover()
 
@@ -45,27 +41,30 @@ def show_boards() -> None:
     table.add_column("Type",       style="magenta",    min_width=12)
     table.add_column("Revision",   style="white",      min_width=9)
     table.add_column("Firmware",   style="white",      min_width=9)
+    table.add_column("Build ID",   style="white",      min_width=9)
     table.add_column("Transport",  style="yellow",     min_width=12)
     table.add_column("Status",     min_width=12)
 
     for board in boards:
         ident = board.identity
+        board_type = board.metadata.get("board_type", ident.board_type.value)
+        build_id = board.metadata.get("build_id", ident.serial or "-")
         status_val = board.status.value
         status_style = _STATUS_STYLE.get(status_val, "white")
         transport_str = str(board.transport) if board.transport else "—"
 
         table.add_row(
             ident.board_id,
-            ident.board_type.value,
+            board_type,
             ident.revision,
             ident.firmware,
+            build_id,
             transport_str,
             f"[{status_style}]{status_val}[/{status_style}]",
         )
 
     console.print(table)
     console.print(
-        f"\n  [dim]{len(boards)} board(s) listed  ·  "
-        "Mock data — USB discovery coming in a future release.[/dim]\n"
+        f"\n  [dim]{len(boards)} board(s) listed via TRT serial discovery.[/dim]\n"
     )
 

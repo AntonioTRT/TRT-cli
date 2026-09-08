@@ -358,6 +358,7 @@ class DiscoveredBoardPayload:
     status: str
     transport: TransportPayload
     capabilities: BoardCapabilitiesPayload
+    build_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -369,6 +370,7 @@ class DiscoveredBoardPayload:
             "status": self.status,
             "transport": self.transport.to_dict(),
             "capabilities": self.capabilities.to_dict(),
+            "build_id": self.build_id,
         }
 
 

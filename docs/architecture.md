@@ -25,28 +25,26 @@ Developer / User
 ┌────────────────────────────────────────────────────────────┐
 │                     Protocol Layer                          │
 │  ProtocolOperation, typed requests/responses,              │
-│  ProtocolClient,                                           │
-│  MockProtocolClient                                        │
+│  ProtocolClient, SerialProtocolClient, MockProtocolClient  │
 │  src/trt/protocol/*.py                                     │
 └──────────────────────────────┬─────────────────────────────┘
                                │
                                v
 ┌────────────────────────────────────────────────────────────┐
 │                    Transport Layer                          │
-│  Transport interface, MockTransport                        │
+│  Transport interface, SerialTransport, MockTransport       │
 │  src/trt/transport/*.py                                    │
 └──────────────────────────────┬─────────────────────────────┘
                                │
                                v
 ┌────────────────────────────────────────────────────────────┐
-│                    Mock Device Layer                        │
-│  Simulated discovery, GPIO, PWM, ADC, DAC, I2C, SPI,       │
-│  debug, LCD, and LED interactions                           │
-│  intentional mock-only communication layer                  │
+│                      Device Layer                           │
+│  Arduino Uno running TRT-Core firmware, plus explicit       │
+│  mock transport support for tests                           │
 └────────────────────────────────────────────────────────────┘
 ```
 
-This is the target architecture used by the project today, even though the lower layers are mock implementations for the current phase.
+This architecture is now used for both real serial communication and explicit mock-backed tests.
 
 ---
 
@@ -94,24 +92,27 @@ This is the place where business logic belongs in the current project structure.
 Files:
 - [src/trt/protocol/models.py](../src/trt/protocol/models.py)
 - [src/trt/protocol/protocol_client.py](../src/trt/protocol/protocol_client.py)
+- [src/trt/protocol/serial_protocol_client.py](../src/trt/protocol/serial_protocol_client.py)
 
 Responsibilities:
 - define protocol request/response objects
 - hide transport choices from the service layer
-- provide a mock client for current behavior
+- provide serial and mock protocol clients
 
-The current implementation is intentionally transport-independent and designed so that a future USB/CAN/TCP adapter can implement the same interface without changing service logic.
+The current implementation is transport-independent and designed so serial, USB, CAN, TCP, and mock adapters can implement the same interface without changing service logic.
 
 ### Transport Layer
 
 Files:
 - [src/trt/transport/base.py](../src/trt/transport/base.py)
+- [src/trt/transport/serial_transport.py](../src/trt/transport/serial_transport.py)
 - [src/trt/transport/mock_transport.py](../src/trt/transport/mock_transport.py)
 
 Responsibilities:
 - send protocol requests over a concrete transport
 - isolate the protocol layer from runtime transport concerns
-- define future extension points for USB/CAN/TCP transports
+- enumerate serial ports and exchange TRT frames over COM ports
+- define extension points for USB/CAN/TCP transports
 
 ### Domain Layer
 
@@ -137,19 +138,20 @@ The domain layer remains framework-independent and portable.
 - LED and LCD service layers
 - typed protocol operation, request, and response models
 - protocol client abstraction
-- mock transport as the only simulated hardware response generator
+- real serial discovery over available COM ports
+- real `trt board info 101` transaction over COM4
+- mock transport retained as explicit test/support infrastructure
 - capability service
 
 ### Planned for the future
 
-- real `trt-protocol` repo implementation
+- expanded `trt-protocol` repo implementation
 - USB CDC transport implementation
 - CAN transport
 - TCP transport
-- real firmware capability handshake
-- real device discovery
+- broader firmware capability coverage
 
-This distinction is intentional: current code is mock-backed by design, not a production hardware stack.
+TRT-CLI 1.0.0 is no longer mock-only: board discovery and numeric board info can use real TRT protocol frames against Arduino Uno firmware.
 
 ---
 
@@ -157,10 +159,10 @@ This distinction is intentional: current code is mock-backed by design, not a pr
 
 ```text
 CLI
-    -> BoardService / DiscoveryService / CapabilityService / LCDService / LEDService
-      -> ProtocolClient
-          -> Transport
-              -> MockDevice
+      -> BoardService / DiscoveryService / CapabilityService / LCDService / LEDService
+          -> ProtocolClient
+              -> SerialTransport / MockTransport
+                  -> TRT-Core firmware / explicit test double
 ```
 
 Dependency direction rules now follow the intended architecture:
@@ -168,7 +170,8 @@ Dependency direction rules now follow the intended architecture:
 - CLI depends on services and renders returned data
 - Services depend on protocol and repository abstractions
 - Protocol depends on transport abstractions
-- MockTransport generates simulated device responses
+- SerialTransport exchanges real TRT frames over COM ports
+- MockTransport generates simulated device responses only when explicitly injected
 - Transport does not depend on CLI or services
 - Domain models remain independent
 
@@ -200,7 +203,8 @@ Key abstractions:
 - typed request dataclasses such as `DiscoverRequest`, `GpioReadRequest`, and `GpioWriteRequest`
 - typed response dataclasses such as `DiscoverResponse`, `GpioReadResponse`, and `GetCapabilitiesResponse`
 - `ProtocolClient`: abstract interface for sending protocol requests
-- `MockProtocolClient`: current mock implementation for tests and CLI execution
+- `SerialProtocolClient`: current real serial implementation for TRT-Core firmware
+- `MockProtocolClient`: explicit mock implementation for tests and support paths
 
 Services now construct typed request objects instead of raw operation strings and unstructured request payload dictionaries. Transports return typed response objects, and services project them into CLI-facing result DTOs for rendering.
 
@@ -215,7 +219,8 @@ The transport layer now defines the future extension points.
 Key abstractions:
 
 - `Transport`: abstract interface
-- `MockTransport`: current mock device boundary used by services through the protocol client
+- `SerialTransport`: current real COM-port transport used for Arduino Uno TRT-Core communication
+- `MockTransport`: explicit test/support transport
 
 Planned future implementations:
 
@@ -223,7 +228,7 @@ Planned future implementations:
 - `CANTransport`
 - `TCPTransport`
 
-The important architectural point is that the protocol layer depends on the transport interface, not on a specific transport backend. In the current codebase, `MockTransport` is also the only component that creates simulated hardware payloads.
+The important architectural point is that the protocol layer depends on the transport interface, not on a specific transport backend. `SerialTransport` performs real frame exchange; `MockTransport` remains available only for explicit test/support use.
 
 ---
 
@@ -241,15 +246,13 @@ The new architecture improves maintainability and future migration for several r
 
 ## Remaining future work
 
-The following are still intentionally deferred because the project is intentionally mock-based for the current phase:
+The following remain outside the current 1.0.0 hardware-validated slice:
 
-- real protocol framing and serialization
-- real USB enumeration and device scanning
 - real CAN and TCP transport adapters
-- real hardware capability negotiation
-- firmware-backed board discovery
+- full USB CDC implementation beyond current COM-port serial transport
+- full command coverage beyond discovery, board info, firmware version, build ID, and capabilities
 
-These remain future work and are not part of a production device integration layer yet.
+These do not change the 1.0.0 milestone: TRT-CLI has a validated end-to-end Arduino Uno protocol transaction.
 
 
 ---

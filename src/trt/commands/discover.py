@@ -25,12 +25,15 @@ def run_discover() -> None:
 
     for board in boards:
         ident = board.identity
+        board_type = board.metadata.get("board_type", ident.board_type.value)
+        build_id = board.metadata.get("build_id", ident.serial or "-")
         transport_str = str(board.transport) if board.transport else "-"
         console.print(
             f"  [cyan]{ident.board_id}[/cyan]  "
-            f"[magenta]{ident.board_type.value}[/magenta]  "
+            f"[magenta]{board_type}[/magenta]  "
             f"fw=[white]{ident.firmware}[/white]  "
+            f"build=[white]{build_id}[/white]  "
             f"via=[yellow]{transport_str}[/yellow]"
         )
 
-    console.print("\n  [dim]Mock discovery - real USB enumeration coming in a future release.[/dim]\n")
+    console.print("\n  [dim]Real serial discovery via TRT protocol.[/dim]\n")

@@ -22,9 +22,6 @@ from trt.protocol.models import (
     DebugMonitorRequest,
     DebugResponse,
     DebugShellRequest,
-    DiscoverRequest,
-    DiscoverResponse,
-    DiscoveredBoardPayload,
     GpioListRequest,
     GpioListResponse,
     GpioPinState,
@@ -65,7 +62,6 @@ from trt.protocol.models import (
     SpiConfigResponse,
     SpiTransferRequest,
     SpiTransferResponse,
-    TransportPayload,
 )
 from trt.transport.base import Transport
 
@@ -74,9 +70,6 @@ class MockTransport(Transport):
     """Transport implementation that simulates device communication."""
 
     def send(self, request: ProtocolRequest) -> ProtocolResponse:
-        if isinstance(request, DiscoverRequest):
-            return DiscoverResponse(board_id=request.board_id, boards=self._mock_boards())
-
         if isinstance(request, BoardResetRequest):
             return ActionResponse(operation=request.operation, board_id=request.board_id, label="board reset", note=self._board_note(request.board_id))
 
@@ -246,39 +239,6 @@ class MockTransport(Transport):
 
     def is_available(self) -> bool:
         return True
-
-    def _mock_boards(self) -> tuple[DiscoveredBoardPayload, ...]:
-        return (
-            DiscoveredBoardPayload(
-                board_id="board0",
-                board_type="TRT_CORE",
-                revision="A1",
-                firmware="0.1.0",
-                serial="000001",
-                status="ready",
-                transport=TransportPayload(transport_type="usb", port="COM3"),
-                capabilities=BoardCapabilitiesPayload(
-                    gpio=True,
-                    pwm=True,
-                    adc=True,
-                    dac=True,
-                    i2c=True,
-                    spi=True,
-                    uart=True,
-                    debug_shell=True,
-                ),
-            ),
-            DiscoveredBoardPayload(
-                board_id="board1",
-                board_type="Arduino",
-                revision="R3",
-                firmware="0.1.0",
-                serial="000002",
-                status="connected",
-                transport=TransportPayload(transport_type="usb", port="COM4"),
-                capabilities=BoardCapabilitiesPayload(gpio=True, pwm=True, adc=True, i2c=True),
-            ),
-        )
 
     def _board_note(self, board_id: str) -> str:
         return f"Mock data for {board_id}. Real values will appear once TRT Protocol is implemented."

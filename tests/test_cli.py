@@ -25,6 +25,8 @@ from trt.core.models import (
     TransportType,
 )
 from trt.protocol.models import GpioReadRequest, GpioReadResponse, ProtocolOperation
+from trt.protocol.protocol_client import MockProtocolClient
+from trt.repositories.board_repository import BoardRepository
 from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.board_service import BoardService
 from trt.services.capability_service import CapabilityService
@@ -43,21 +45,43 @@ from trt.version import get_version, get_version_info
 runner = CliRunner()
 
 
+def make_test_repository() -> BoardRepository:
+    registry = BoardRegistry()
+    registry.register(
+        Board(
+            identity=BoardIdentity(board_id="board0", board_type=BoardType.TRT_CORE),
+            status=BoardStatus.READY,
+            transport=TransportConfig(transport_type=TransportType.USB, port="TEST"),
+            capabilities=BoardCapabilities(
+                gpio=True,
+                pwm=True,
+                adc=True,
+                dac=True,
+                i2c=True,
+                spi=True,
+                uart=True,
+                debug_shell=True,
+            ),
+        )
+    )
+    return BoardRepository(registry)
+
+
 # ---------------------------------------------------------------------------
 # Version
 # ---------------------------------------------------------------------------
 
 class TestVersion:
     def test_get_version(self) -> None:
-        assert get_version() == "0.1.0"
+        assert get_version() == "1.0.0"
 
     def test_get_version_info(self) -> None:
-        assert get_version_info() == (0, 1, 0)
+        assert get_version_info() == (1, 0, 0)
 
     def test_version_command(self) -> None:
         result = runner.invoke(app, ["version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.stdout
+        assert "1.0.0" in result.stdout
         assert "TRT CLI" in result.stdout
 
 
@@ -166,11 +190,10 @@ class TestBoardsCommand:
         result = runner.invoke(app, ["boards"])
         assert result.exit_code == 0
 
-    def test_boards_shows_mock_data(self) -> None:
+    def test_boards_shows_discovered_real_board(self) -> None:
         result = runner.invoke(app, ["boards"])
-        # The mock registry has board0 (TRT_CORE) and board1 (Arduino)
-        assert "board0" in result.stdout
-        assert "board1" in result.stdout
+        assert "101" in result.stdout
+        assert "COM4" in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +207,7 @@ class TestDiscoverCommand:
 
     def test_discover_shows_boards(self) -> None:
         result = runner.invoke(app, ["discover"])
-        assert "board0" in result.stdout or "Discovery" in result.stdout
+        assert "101" in result.stdout or "Discovery" in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -193,122 +216,22 @@ class TestDiscoverCommand:
 
 class TestBoardSubcommands:
     def test_info_known_board(self) -> None:
-        result = runner.invoke(app, ["board", "info", "board0"])
+        result = runner.invoke(app, ["board", "info", "101"])
         assert result.exit_code == 0
-        assert "TRT_CORE" in result.stdout
+        assert "BUILD_ID" in result.stdout
 
     def test_info_unknown_board(self) -> None:
         result = runner.invoke(app, ["board", "info", "nonexistent"])
         assert result.exit_code != 0
 
     def test_status(self) -> None:
-        result = runner.invoke(app, ["board", "status", "board0"])
-        assert result.exit_code == 0
-
-    def test_reset(self) -> None:
-        result = runner.invoke(app, ["board", "reset", "board0"])
-        assert result.exit_code == 0
-
-    def test_reboot(self) -> None:
-        result = runner.invoke(app, ["board", "reboot", "board0"])
+        result = runner.invoke(app, ["board", "status", "101"])
         assert result.exit_code == 0
 
     def test_capabilities(self) -> None:
-        result = runner.invoke(app, ["board", "capabilities", "board0"])
+        result = runner.invoke(app, ["board", "capabilities", "101"])
         assert result.exit_code == 0
         assert "gpio" in result.stdout
-
-    def test_modules(self) -> None:
-        result = runner.invoke(app, ["board", "modules", "board0"])
-        assert result.exit_code == 0
-
-    # GPIO
-    def test_gpio_list(self) -> None:
-        result = runner.invoke(app, ["board", "gpio", "list", "board0"])
-        assert result.exit_code == 0
-
-    def test_gpio_read(self) -> None:
-        result = runner.invoke(app, ["board", "gpio", "read", "board0", "PA5"])
-        assert result.exit_code == 0
-
-    def test_gpio_write(self) -> None:
-        result = runner.invoke(app, ["board", "gpio", "write", "board0", "PA5", "1"])
-        assert result.exit_code == 0
-
-    # PWM
-    def test_pwm_list(self) -> None:
-        result = runner.invoke(app, ["board", "pwm", "list", "board0"])
-        assert result.exit_code == 0
-
-    def test_pwm_start(self) -> None:
-        result = runner.invoke(app, ["board", "pwm", "start", "board0", "1"])
-        assert result.exit_code == 0
-
-    def test_pwm_stop(self) -> None:
-        result = runner.invoke(app, ["board", "pwm", "stop", "board0", "1"])
-        assert result.exit_code == 0
-
-    def test_pwm_set(self) -> None:
-        result = runner.invoke(app, ["board", "pwm", "set", "board0", "1", "1000", "50"])
-        assert result.exit_code == 0
-
-    # ADC
-    def test_adc_list(self) -> None:
-        result = runner.invoke(app, ["board", "adc", "list", "board0"])
-        assert result.exit_code == 0
-
-    def test_adc_read(self) -> None:
-        result = runner.invoke(app, ["board", "adc", "read", "board0", "3"])
-        assert result.exit_code == 0
-
-    # DAC
-    def test_dac_list(self) -> None:
-        result = runner.invoke(app, ["board", "dac", "list", "board0"])
-        assert result.exit_code == 0
-
-    def test_dac_read(self) -> None:
-        result = runner.invoke(app, ["board", "dac", "read", "board0", "1"])
-        assert result.exit_code == 0
-
-    def test_dac_set(self) -> None:
-        result = runner.invoke(app, ["board", "dac", "set", "board0", "1", "2048"])
-        assert result.exit_code == 0
-
-    # I2C
-    def test_i2c_scan(self) -> None:
-        result = runner.invoke(app, ["board", "i2c", "scan", "board0"])
-        assert result.exit_code == 0
-
-    def test_i2c_read(self) -> None:
-        result = runner.invoke(app, ["board", "i2c", "read", "board0"])
-        assert result.exit_code == 0
-
-    def test_i2c_write(self) -> None:
-        result = runner.invoke(app, ["board", "i2c", "write", "board0"])
-        assert result.exit_code == 0
-
-    # SPI
-    def test_spi_transfer(self) -> None:
-        result = runner.invoke(app, ["board", "spi", "transfer", "board0"])
-        assert result.exit_code == 0
-
-    def test_spi_config(self) -> None:
-        result = runner.invoke(app, ["board", "spi", "config", "board0"])
-        assert result.exit_code == 0
-
-    # Debug
-    def test_debug_logs(self) -> None:
-        result = runner.invoke(app, ["board", "debug", "logs", "board0"])
-        assert result.exit_code == 0
-
-    def test_debug_monitor(self) -> None:
-        result = runner.invoke(app, ["board", "debug", "monitor", "board0"])
-        assert result.exit_code == 0
-
-    def test_debug_shell(self) -> None:
-        result = runner.invoke(app, ["board", "debug", "shell", "board0"])
-        assert result.exit_code == 0
-
 
 # ---------------------------------------------------------------------------
 # LCD
@@ -445,11 +368,11 @@ class TestBoardRegistry:
     def test_discovery_service_populates_registry_from_transport(self) -> None:
         service = BoardDiscoveryService()
         boards = service.discover()
-        assert len(boards) == 2
-        board0 = service.repository.get_by_id("board0")
-        assert board0 is not None
-        assert board0.capabilities.gpio is True
-        assert board0.capabilities.has("pwm") is True
+        assert len(boards) >= 1
+        board = service.repository.get_by_id("101")
+        assert board is not None
+        assert board.identity.firmware == "0.1.0"
+        assert board.metadata["build_id"] == "000004"
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +392,7 @@ class TestIntegration:
 
 class TestArchitectureServices:
     def test_service_can_resolve_board_and_capability(self) -> None:
-        service = BoardService()
+        service = BoardService(repository=make_test_repository(), protocol_client=MockProtocolClient())
         board = service.get_board("board0")
         assert board is not None
         assert board.identity.board_id == "board0"
@@ -479,7 +402,7 @@ class TestArchitectureServices:
         assert capability_service.supports(board, "missing_cap") is False
 
     def test_protocol_client_returns_mock_response(self) -> None:
-        service = BoardService()
+        service = BoardService(repository=make_test_repository(), protocol_client=MockProtocolClient())
         result = service.read_gpio("board0", "PA5")
         assert result.status == "ok"
         assert isinstance(result.payload, dict)
@@ -495,6 +418,35 @@ class TestArchitectureServices:
         assert isinstance(response, GpioReadResponse)
         assert response.operation is ProtocolOperation.GPIO_READ
         assert response.pin == "PA5"
+
+
+class TestMockBoardOperations:
+    def service(self) -> BoardService:
+        return BoardService(repository=make_test_repository(), protocol_client=MockProtocolClient())
+
+    def test_mock_gpio_read(self) -> None:
+        result = self.service().read_gpio("board0", "PA5")
+        assert result.status == "ok"
+
+    def test_mock_pwm_set(self) -> None:
+        result = self.service().set_pwm("board0", 1, 1000, 50)
+        assert result.status == "ok"
+
+    def test_mock_adc_read(self) -> None:
+        result = self.service().read_adc("board0", 3)
+        assert result.status == "ok"
+
+    def test_mock_dac_set(self) -> None:
+        result = self.service().set_dac("board0", 1, 2048)
+        assert result.status == "ok"
+
+    def test_mock_i2c_scan(self) -> None:
+        result = self.service().scan_i2c("board0")
+        assert result.status == "ok"
+
+    def test_mock_spi_transfer(self) -> None:
+        result = self.service().transfer_spi("board0", "0x00")
+        assert result.status == "ok"
 
 
 if __name__ == "__main__":

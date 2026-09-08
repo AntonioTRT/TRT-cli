@@ -30,7 +30,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-_PROTOCOL_VERSION = "0.1.0-draft"
+_PROTOCOL_VERSION = "1.0.0"
 
 
 @app.command(help="Show TRT Protocol specification summary")

@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from trt.core.models import Board
+from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.board_service import BoardActionResult, BoardService, RealBoardInfoResult
 
 console = Console()
@@ -77,6 +78,17 @@ def board_capabilities(
     board_id: str = typer.Argument(..., help="Board identifier"),
 ) -> None:
     service = BoardService()
+    if board_id.isdigit():
+        discovery = BoardDiscoveryService()
+        discovery.discover()
+        board = discovery.repository.get_by_id(board_id)
+        console.print()
+        if board is None:
+            _board_not_found(board_id)
+            raise typer.Exit(1)
+        _render_capabilities(board_id, board)
+        return
+
     board = service.get_board(board_id)
     console.print()
     if board is None:
@@ -398,14 +410,16 @@ def _payload(result: BoardActionResult) -> dict[str, Any]:
 
 def _render_board_info(board_id: str, board: Board) -> None:
     ident = board.identity
+    board_type = board.metadata.get("board_type", ident.board_type.value)
+    build_id = board.metadata.get("build_id", ident.serial or "-")
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("key", style="dim", min_width=18)
     table.add_column("value", style="bold white")
     table.add_row("Board ID", ident.board_id)
-    table.add_row("Type", ident.board_type.value)
+    table.add_row("Type", board_type)
     table.add_row("Revision", ident.revision)
     table.add_row("Firmware", ident.firmware)
-    table.add_row("Serial", ident.serial or "-")
+    table.add_row("Build ID", build_id)
     table.add_row("Status", board.status.value)
     table.add_row("Transport", str(board.transport) if board.transport else "-")
     console.print(Panel(table, title=f"[bold cyan]{board_id}[/bold cyan]", border_style="bright_blue", expand=False))

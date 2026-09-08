@@ -1,14 +1,39 @@
 # TRT - Tool Runtime Terminal
 
-> A Python CLI for board-agnostic embedded hardware control, built around thin command adapters, application services, protocol abstractions, and a mock transport boundary.
+> A Python CLI for board-agnostic embedded hardware control with validated Arduino Uno communication over the TRT protocol.
 
-TRT provides a unified, git-style command-line interface for controlling embedded boards across Windows, Linux, and macOS. The current implementation is intentionally mock-backed, but every hardware-shaped operation now follows the same architecture that future real hardware support will use.
+TRT provides a unified command-line interface for controlling embedded boards across Windows, Linux, and macOS. Version 1.0.0 marks the first successful end-to-end hardware milestone: TRT-CLI opened COM4, sent TRT protocol frames to an Arduino Uno running TRT-Core firmware, decoded real responses, and displayed board identity data.
 
 ```text
-CLI -> Service -> ProtocolClient -> Transport -> Mock Device
+TRT-CLI -> COM4 -> Arduino Uno -> TRT-Core -> real protocol response
 ```
 
-The command names and user experience remain stable while the lower layers evolve.
+Validated command:
+
+```bash
+trt board info 101
+```
+
+Validated firmware response:
+
+```text
+Board ID      101
+BOARD_INFO    UNSPECIFIED
+FW_VERSION    0.1.0
+BUILD_ID      000004
+```
+
+---
+
+## Why 1.0.0
+
+TRT-CLI is now versioned as `1.0.0` because the project is no longer mock-only:
+
+- first real hardware communication implemented
+- first real TRT protocol transaction validated
+- Arduino Uno end-to-end communication working over COM4
+- serial discovery now enumerates ports and probes for TRT-compatible firmware
+- mock-only status no longer applies to the core board discovery and board info path
 
 ---
 
@@ -17,8 +42,9 @@ The command names and user experience remain stable while the lower layers evolv
 - Python 3.13+
 - Typer for command routing
 - Rich for terminal output
+- pyserial for serial transport
 - pytest for regression coverage
-- Dataclasses and typed service/protocol/transport boundaries
+- typed protocol request/response models
 
 ---
 
@@ -29,14 +55,10 @@ The command names and user experience remain stable while the lower layers evolv
 | CLI executable `trt` | Implemented |
 | Thin command adapters | Implemented |
 | Application services | Implemented |
-| Typed protocol request/response models | Implemented |
-| Protocol client abstraction | Implemented |
-| Mock transport device responses | Implemented |
-| Real USB/CAN/TCP communication | Future |
-| Real TRT protocol framing | Future |
-| Firmware-backed discovery | Future |
-
-`MockTransport` is the only component that generates simulated hardware responses. CLI commands parse arguments, call services, and render returned data.
+| Typed protocol contract | Implemented |
+| Real serial transport | Implemented for discovery and board info |
+| Arduino Uno TRT-Core communication | Validated |
+| Mock operation support | Retained only as explicit test/support infrastructure |
 
 ---
 
@@ -55,49 +77,36 @@ pip install -e .
 ```bash
 trt help
 trt version
-trt update
-trt boards
 trt discover
-
-trt board info board0
-trt board capabilities board0
-trt board gpio list board0
-trt board gpio write board0 PA5 1
-trt board pwm set board0 1 1000 50
-trt board adc read board0 3
-trt board i2c scan board0
-
-trt lcd write "Hello"
-trt led color 255 0 0
-trt protocol info
+trt boards
+trt board info 101
+trt board capabilities 101
 ```
+
+`trt discover` enumerates available serial ports, probes them with TRT protocol frames, and lists compatible boards.
 
 ---
 
 ## Architecture
 
-The project is organized around clear dependency direction:
+The hardware path follows this dependency direction:
 
 ```text
-src/trt/commands/       Typer handlers and Rich output only
+CLI -> Services -> ProtocolClient -> Transport -> Device
+```
+
+Key directories:
+
+```text
+src/trt/commands/       Typer handlers and Rich output
 src/trt/services/       Board, discovery, LCD, LED, capability, and update orchestration
-src/trt/protocol/       ProtocolOperation, typed requests/responses, ProtocolClient
-src/trt/transport/      Transport interface and MockTransport
+src/trt/protocol/       ProtocolOperation, typed requests/responses, protocol clients
+src/trt/transport/      Transport interface, SerialTransport, MockTransport
 src/trt/repositories/   Board state storage abstraction
 src/trt/core/           Hardware-agnostic domain models
 ```
 
-Hardware-related commands flow through services into protocol and transport abstractions. The mock implementation lives behind `MockTransport`, so future real transports can replace it without changing the command surface.
-
-Protocol operations are represented by `ProtocolOperation` enum values and operation-specific dataclasses such as `GpioReadRequest`, `GpioWriteRequest`, `DiscoverRequest`, and `GpioReadResponse`. Services no longer construct raw operation strings or request payload dictionaries.
-
----
-
-## Capability-Driven Design
-
-TRT avoids board-family-specific command logic. Boards advertise capabilities such as GPIO, PWM, ADC, DAC, I2C, SPI, LCD, and debug shell support. Services enforce those capabilities before sending protocol requests.
-
-This keeps the CLI from hard-coding assumptions about STM32, RP2040, Arduino, or future board families.
+Commands parse arguments and render results. Services coordinate board operations. Protocol clients send typed request objects. Transports exchange frames with devices or provide explicit test doubles.
 
 ---
 
@@ -122,9 +131,9 @@ mypy src
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Layered architecture and dependency flow |
 | [docs/vision.md](docs/vision.md) | Mission, goals, roadmap |
-| [docs/trt-protocol.md](docs/trt-protocol.md) | Future TRT Protocol V1 specification |
+| [docs/trt-protocol.md](docs/trt-protocol.md) | TRT Protocol V1 specification |
 | [docs/cli-reference.md](docs/cli-reference.md) | Command reference |
-| [docs/future-protocol.md](docs/future-protocol.md) | Earlier protocol sketch |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes |
 
 ---
 

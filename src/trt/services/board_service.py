@@ -75,7 +75,7 @@ class BoardService:
         self.capability_service = capability_service or CapabilityService()
         self.protocol_client = protocol_client or MockProtocolClient()
         if repository is None:
-            discovery = BoardDiscoveryService(self.repository, self.protocol_client)
+            discovery = BoardDiscoveryService(self.repository, protocol_client)
             discovery.discover()
             self.repository = discovery.repository
 
@@ -187,10 +187,14 @@ class BoardService:
         from trt.protocol.serial_protocol_client import SerialProtocolClient
         from trt.transport.serial_transport import SerialTransport
 
-        protocol_client = SerialProtocolClient(SerialTransport(port=port))
-        info_response = protocol_client.send(BoardInfoRequest(board_id=board_id))
-        version_response = protocol_client.send(GetVersionRequest(board_id=board_id))
-        build_response = protocol_client.send(BuildIdRequest(board_id=board_id))
+        transport = SerialTransport(port=port)
+        protocol_client = SerialProtocolClient(transport)
+        try:
+            info_response = protocol_client.send(BoardInfoRequest(board_id=board_id))
+            version_response = protocol_client.send(GetVersionRequest(board_id=board_id))
+            build_response = protocol_client.send(BuildIdRequest(board_id=board_id))
+        finally:
+            transport.close()
 
         return RealBoardInfoResult(
             board_id=board_id,

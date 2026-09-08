@@ -8,9 +8,8 @@ from trt.core.models import Board, BoardRegistry
 class BoardRepository:
     """Storage abstraction for board state.
 
-    The repository encapsulates how boards are loaded and retrieved. The current
     The repository encapsulates storage only. Discovery services populate it
-    from protocol responses so mock device data does not originate here.
+    from protocol responses so device data does not originate here.
     """
 
     def __init__(self, registry: BoardRegistry | None = None) -> None:

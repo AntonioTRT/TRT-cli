@@ -16,7 +16,7 @@ Transport Layer
     ↓
 Device Layer
 
-This architecture helps TRT remain board-agnostic, capability-driven, and ready for future protocol and transport implementations.
+This architecture helps TRT remain board-agnostic, capability-driven, and ready for additional protocol and transport implementations.
 
 ---
 
@@ -48,7 +48,7 @@ The service layer should not know whether a device is reached over USB, CAN, or 
 The transport layer is intentionally designed to be replaceable. Future USB, CAN, and TCP adapters should be compatible with the same protocol client interface.
 
 ### 5. Testability and portability
-The architecture separates CLI rendering, service orchestration, and mock transport behavior so the project remains easier to test, reason about, and port to another language in the future.
+The architecture separates CLI rendering, service orchestration, protocol framing, and transport behavior so the project remains easier to test, reason about, and port to another language in the future.
 
 ---
 
@@ -60,14 +60,13 @@ The repo currently delivers the foundation of that vision:
 - board and capability domain models exist
 - service layer exists for board, discovery, LCD, and LED operations
 - typed protocol operation, request, and response abstractions exist
-- mock transport implementation exists and is the only simulated hardware response generator
+- real serial discovery and board info communication are validated against Arduino Uno firmware
+- mock transport support remains available only as explicit test/support infrastructure
 
 The remaining parts are intentionally deferred and remain future work:
 
-- real board discovery
-- real protocol framing
-- real hardware communication
-- real USB/CAN/TCP layers
+- broader protocol command coverage
+- full USB/CAN/TCP layers
 
 ---
 
@@ -78,7 +77,7 @@ The remaining parts are intentionally deferred and remain future work:
 | Board Type | Status | Notes |
 |---|---|---|
 | TRT_CORE | Planned | Reference TRT board |
-| Arduino | Planned | Arduino-compatible boards |
+| Arduino | Implemented | Arduino Uno validated over COM4 |
 | RP2040 | Planned | Common embedded target |
 | Simulator | Planned | Mock in-process device |
 | Custom | Planned | Any board implementing the TRT protocol |
@@ -87,7 +86,8 @@ The remaining parts are intentionally deferred and remain future work:
 
 | Transport | Status | Notes |
 |---|---|---|
-| USB | Planned | Future USB CDC transport |
+| Serial / COM | Implemented | Arduino Uno on COM4 |
+| USB | Planned | Future direct USB CDC transport |
 | CAN | Planned | Future CAN bus support |
 | TCP | Planned | Future Ethernet transport |
 | Mock | Implemented | Current CLI behavior |
@@ -100,13 +100,14 @@ The remaining parts are intentionally deferred and remain future work:
 - CLI scaffold and command structure
 - Rich help and output
 - typed domain model
-- discovery-backed board state through the protocol and mock transport path
+- typed protocol contract and transport abstraction
 - service layer and protocol abstractions
 
-### Milestone 2 — Real protocol client
-- implement real protocol request/response flow
-- expand protocol model definitions
-- begin board capability negotiation
+### Milestone 2 — Hardware validation ✅
+- real serial protocol transaction
+- Arduino Uno on COM4
+- `trt board info 101`
+- firmware version, build ID, board info, and capability reads
 
 ### Milestone 3 — Real transport adapters
 - USB transport implementation

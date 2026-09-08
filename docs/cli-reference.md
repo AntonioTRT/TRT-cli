@@ -125,7 +125,7 @@ trt version
 **Output:**
 ```
 TRT CLI
-Version: 0.1.0
+Version: 1.0.0
 ```
 
 ---
@@ -151,7 +151,7 @@ trt update --check          # Explicit check-only (same as no flags)
 **Phase 1 output (current):**
 ```
   Checking for updates…
-  Current version : 0.1.0
+  Current version : 1.0.0
   Install method  : pip
   Checking         : GitHub releases (AntonioTRT/TRT-cli)
 
@@ -162,7 +162,7 @@ trt update --check          # Explicit check-only (same as no flags)
 **Phase 2 output (when update is available):**
 ```
   ╭─ Update available! ───────────────────────────────╮
-  │  Current version : 0.1.0                          │
+  │  Current version : 1.0.0                          │
   │  Latest version  : 0.2.0                          │
   │  https://github.com/AntonioTRT/TRT-cli/releases   │
   ╰───────────────────────────────────────────────────╯
@@ -192,14 +192,13 @@ List all boards currently known to TRT.
 trt boards
 ```
 
-**Output columns:** Board ID · Type · Revision · Firmware · Transport · Status
+**Output columns:** Board ID · Type · Revision · Firmware · Build ID · Transport · Status
 
 **Example:**
 ```
 ╭──────────────── Connected Boards ────────────────╮
 │ Board ID │ Type     │ Rev │ Firmware │ Transport  │ Status    │
-│ board0   │ TRT_CORE │ A1  │ 0.1.0    │ usb:COM3   │ ready     │
-│ board1   │ Arduino  │ R3  │ 0.1.0    │ usb:COM4   │ connected │
+│ 101      │ UNSPECIFIED │ - │ 0.1.0 │ 000004 │ usb:COM4 │ ready │
 ╰──────────────────────────────────────────────────╯
 ```
 
@@ -213,7 +212,7 @@ Force a rescan for connected boards on all active transports.
 trt discover
 ```
 
-Currently a mock implementation.  Future: triggers USB enumeration via TRT Protocol.
+Enumerates available serial ports, probes each port with TRT protocol frames, and lists TRT-compatible boards.
 
 ---
 
@@ -230,7 +229,7 @@ trt board <board_id> <sub-command> [options]
 Display board identity and firmware details.
 
 ```bash
-trt board board0 info
+trt board 101 info
 ```
 
 ### trt board \<id\> status
@@ -238,7 +237,7 @@ trt board board0 info
 Show current board operational status.
 
 ```bash
-trt board board0 status
+trt board 101 status
 ```
 
 ### trt board \<id\> reset
@@ -262,12 +261,12 @@ trt board board0 reboot
 List all capabilities the board advertises.
 
 ```bash
-trt board board0 capabilities
+trt board 101 capabilities
 ```
 
 **Output:**
 ```
-Capabilities — board0
+Capabilities — 101
   gpio         ✓ yes
   pwm          ✓ yes
   adc          ✓ yes

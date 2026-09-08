@@ -88,17 +88,13 @@ def update(
 
 @app.command(help="List all known boards")
 def boards() -> None:
-    """Display all boards currently known to TRT (mock data for now)."""
+    """Display all boards currently known to TRT."""
     show_boards()
 
 
 @app.command(help="Rescan for connected boards (USB)")
 def discover() -> None:
-    """Force a rescan for boards on all active transports.
-
-    Currently a mock implementation.  Future versions will trigger real
-    USB enumeration via TRT Protocol.
-    """
+    """Force a rescan for boards on active serial transports."""
     run_discover()
 
 
