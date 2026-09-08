@@ -11,7 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from trt.core.models import Board
-from trt.services.board_service import BoardActionResult, BoardService
+from trt.services.board_service import BoardActionResult, BoardService, RealBoardInfoResult
 
 console = Console()
 
@@ -27,6 +27,14 @@ def board_info(
     board_id: str = typer.Argument(..., help="Board identifier, e.g. board0"),
 ) -> None:
     service = BoardService()
+    if board_id.isdigit():
+        try:
+            _render_real_board_info(service.real_board_info(board_id, port="COM4"))
+        except (RuntimeError, TimeoutError, ValueError) as error:
+            console.print(f"\n  [red]Real TRT transaction failed:[/red] {error}\n")
+            raise typer.Exit(1) from error
+        return
+
     board = service.board_info(board_id)
     console.print()
     if board is None:
@@ -110,7 +118,7 @@ def gpio_read(
     board_id: str = typer.Argument(..., help="Board identifier"),
     pin: str = typer.Argument(..., help="Pin name (e.g. PA5)"),
 ) -> None:
-    result = _run_board_action(board_id, lambda service: service.execute(board_id, "gpio_read", "gpio", {"pin": pin}))
+    result = _run_board_action(board_id, lambda service: service.read_gpio(board_id, pin))
     payload = _payload(result)
     console.print()
     console.print(
@@ -401,6 +409,20 @@ def _render_board_info(board_id: str, board: Board) -> None:
     table.add_row("Status", board.status.value)
     table.add_row("Transport", str(board.transport) if board.transport else "-")
     console.print(Panel(table, title=f"[bold cyan]{board_id}[/bold cyan]", border_style="bright_blue", expand=False))
+    console.print()
+
+
+def _render_real_board_info(result: RealBoardInfoResult) -> None:
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column("key", style="dim", min_width=18)
+    table.add_column("value", style="bold white")
+    table.add_row("Board ID", result.board_id)
+    table.add_row("Port", result.port)
+    table.add_row("BOARD_INFO", result.board_info)
+    table.add_row("FW_VERSION", result.fw_version)
+    table.add_row("BUILD_ID", result.build_id)
+    console.print()
+    console.print(Panel(table, title=f"[bold cyan]{result.board_id}[/bold cyan]", border_style="bright_blue", expand=False))
     console.print()
 
 

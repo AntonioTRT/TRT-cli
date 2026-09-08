@@ -66,7 +66,7 @@ def write(
 
 
 def _payload(response: ProtocolResponse) -> dict[str, Any]:
-    return response.payload if isinstance(response.payload, dict) else {}
+    return response.to_payload()
 
 
 def _hardware_note(payload: dict[str, Any]) -> None:

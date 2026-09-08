@@ -61,7 +61,7 @@ def color(
 
 
 def _payload(response: ProtocolResponse) -> dict[str, Any]:
-    return response.payload if isinstance(response.payload, dict) else {}
+    return response.to_payload()
 
 
 def _render_action(response: ProtocolResponse, label: str | None = None) -> None:

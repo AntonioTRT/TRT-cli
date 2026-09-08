@@ -29,7 +29,7 @@ The command names and user experience remain stable while the lower layers evolv
 | CLI executable `trt` | Implemented |
 | Thin command adapters | Implemented |
 | Application services | Implemented |
-| Protocol request/response models | Implemented |
+| Typed protocol request/response models | Implemented |
 | Protocol client abstraction | Implemented |
 | Mock transport device responses | Implemented |
 | Real USB/CAN/TCP communication | Future |
@@ -81,13 +81,15 @@ The project is organized around clear dependency direction:
 ```text
 src/trt/commands/       Typer handlers and Rich output only
 src/trt/services/       Board, discovery, LCD, LED, capability, and update orchestration
-src/trt/protocol/       ProtocolRequest, ProtocolResponse, ProtocolClient
+src/trt/protocol/       ProtocolOperation, typed requests/responses, ProtocolClient
 src/trt/transport/      Transport interface and MockTransport
 src/trt/repositories/   Board state storage abstraction
 src/trt/core/           Hardware-agnostic domain models
 ```
 
 Hardware-related commands flow through services into protocol and transport abstractions. The mock implementation lives behind `MockTransport`, so future real transports can replace it without changing the command surface.
+
+Protocol operations are represented by `ProtocolOperation` enum values and operation-specific dataclasses such as `GpioReadRequest`, `GpioWriteRequest`, `DiscoverRequest`, and `GpioReadResponse`. Services no longer construct raw operation strings or request payload dictionaries.
 
 ---
 

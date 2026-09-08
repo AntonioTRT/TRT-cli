@@ -17,16 +17,18 @@ from trt.cli import app
 from trt.core.models import (
     Board,
     BoardCapabilities,
-    BoardIdentity,
+    BoardIdentity,  
     BoardRegistry,
     BoardStatus,
     BoardType,
     TransportConfig,
     TransportType,
 )
+from trt.protocol.models import GpioReadRequest, GpioReadResponse, ProtocolOperation
 from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.board_service import BoardService
 from trt.services.capability_service import CapabilityService
+from trt.transport.mock_transport import MockTransport
 from trt.services.update_service import (
     InstallMethod,
     UpdateStatus,
@@ -480,7 +482,19 @@ class TestArchitectureServices:
         service = BoardService()
         result = service.read_gpio("board0", "PA5")
         assert result.status == "ok"
-        assert "PA5" in result.payload
+        assert isinstance(result.payload, dict)
+        assert result.payload["pin"] == "PA5"
+
+    def test_protocol_operation_is_typed(self) -> None:
+        request = GpioReadRequest(board_id="board0", pin="PA5")
+        assert request.operation is ProtocolOperation.GPIO_READ
+        assert request.capability == "gpio"
+
+    def test_mock_transport_returns_typed_response(self) -> None:
+        response = MockTransport().send(GpioReadRequest(board_id="board0", pin="PA5"))
+        assert isinstance(response, GpioReadResponse)
+        assert response.operation is ProtocolOperation.GPIO_READ
+        assert response.pin == "PA5"
 
 
 if __name__ == "__main__":

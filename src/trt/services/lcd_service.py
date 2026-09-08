@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from trt.protocol.models import ProtocolRequest, ProtocolResponse
+from trt.protocol.models import (
+    LcdClearRequest,
+    LcdInfoRequest,
+    LcdResetRequest,
+    LcdWriteRequest,
+    ProtocolRequest,
+    ProtocolResponse,
+)
 from trt.protocol.protocol_client import MockProtocolClient, ProtocolClient
 
 
@@ -12,23 +19,17 @@ class LCDService:
     def __init__(self, protocol_client: ProtocolClient | None = None) -> None:
         self.protocol_client = protocol_client or MockProtocolClient()
 
-    def execute(self, operation: str, payload: dict[str, object] | None = None) -> ProtocolResponse:
-        request = ProtocolRequest(
-            operation=operation,
-            board_id="default",
-            capability="lcd",
-            payload=payload or {},
-        )
+    def execute(self, request: ProtocolRequest) -> ProtocolResponse:
         return self.protocol_client.send(request)
 
     def info(self) -> ProtocolResponse:
-        return self.execute("lcd_info")
+        return self.execute(LcdInfoRequest())
 
     def reset(self) -> ProtocolResponse:
-        return self.execute("lcd_reset")
+        return self.execute(LcdResetRequest())
 
     def clear(self) -> ProtocolResponse:
-        return self.execute("lcd_clear")
+        return self.execute(LcdClearRequest())
 
     def write(self, text: str, line: int, col: int) -> ProtocolResponse:
-        return self.execute("lcd_write", {"text": text, "line": line, "col": col})
+        return self.execute(LcdWriteRequest(text=text, line=line, col=col))

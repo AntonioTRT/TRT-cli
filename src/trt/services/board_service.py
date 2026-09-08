@@ -6,7 +6,35 @@ from dataclasses import dataclass
 from typing import Any
 
 from trt.core.models import Board
-from trt.protocol.models import ProtocolRequest
+from trt.protocol.models import (
+    AdcListRequest,
+    AdcReadRequest,
+    BoardInfoRequest,
+    BoardRebootRequest,
+    BoardResetRequest,
+    BuildIdRequest,
+    DacListRequest,
+    DacReadRequest,
+    DacSetRequest,
+    DebugLogsRequest,
+    DebugMonitorRequest,
+    DebugShellRequest,
+    GpioListRequest,
+    GpioReadRequest,
+    GpioWriteRequest,
+    GetVersionRequest,
+    I2cReadRequest,
+    I2cScanRequest,
+    I2cWriteRequest,
+    ModulesListRequest,
+    ProtocolRequest,
+    PwmListRequest,
+    PwmSetRequest,
+    PwmStartRequest,
+    PwmStopRequest,
+    SpiConfigRequest,
+    SpiTransferRequest,
+)
 from trt.protocol.protocol_client import MockProtocolClient, ProtocolClient
 from trt.repositories.board_repository import BoardRepository
 from trt.services.board_discovery_service import BoardDiscoveryService
@@ -23,13 +51,19 @@ class BoardActionResult:
     mock: bool = False
 
 
-class BoardService:
-    """Application service responsible for board-level operations.
+@dataclass(frozen=True)
+class RealBoardInfoResult:
+    """Real board identity read from TRT firmware."""
 
-    The CLI layer invokes this service, which then coordinates the repository,
-    capability policy, and protocol client. Mock hardware behavior remains in the
-    protocol transport layer rather than in the CLI command handlers.
-    """
+    board_id: str
+    board_info: str
+    fw_version: str
+    build_id: str
+    port: str
+
+
+class BoardService:
+    """Application service responsible for board-level operations."""
 
     def __init__(
         self,
@@ -63,116 +97,105 @@ class BoardService:
             raise ValueError(f"Board {board_id} does not support {capability}")
         return board
 
-    def execute(
-        self,
-        board_id: str,
-        operation: str,
-        capability: str | None = None,
-        payload: dict[str, Any] | None = None,
-    ) -> BoardActionResult:
-        if capability:
-            self.ensure_capability(board_id, capability)
+    def execute(self, request: ProtocolRequest) -> BoardActionResult:
+        if request.capability:
+            self.ensure_capability(request.board_id, request.capability)
         else:
-            self.require_board(board_id)
+            self.require_board(request.board_id)
 
-        request = ProtocolRequest(
-            operation=operation,
-            board_id=board_id,
-            capability=capability,
-            payload=payload or {},
-        )
         response = self.protocol_client.send(request)
-        return BoardActionResult(status=response.status, payload=response.payload, board_id=board_id, mock=response.mock)
+        return BoardActionResult(
+            status=response.status,
+            payload=response.to_payload(),
+            board_id=request.board_id,
+            mock=response.mock,
+        )
 
     def list_modules(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "modules_list", payload={})
+        return self.execute(ModulesListRequest(board_id=board_id))
 
     def reset(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "board_reset", payload={})
+        return self.execute(BoardResetRequest(board_id=board_id))
 
     def reboot(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "board_reboot", payload={})
+        return self.execute(BoardRebootRequest(board_id=board_id))
 
     def list_gpio(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "gpio_list", "gpio")
+        return self.execute(GpioListRequest(board_id=board_id))
 
     def read_gpio(self, board_id: str, pin: str) -> BoardActionResult:
-        result = self.execute(board_id, "gpio_read", "gpio", {"pin": pin})
-        return BoardActionResult(status=result.status, payload=f"{pin} -> {result.payload}", board_id=board_id, mock=result.mock)
+        return self.execute(GpioReadRequest(board_id=board_id, pin=pin))
 
     def write_gpio(self, board_id: str, pin: str, value: int) -> BoardActionResult:
-        return self.execute(board_id, "gpio_write", "gpio", {"pin": pin, "value": value})
+        return self.execute(GpioWriteRequest(board_id=board_id, pin=pin, value=value))
 
     def list_pwm(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "pwm_list", "pwm")
+        return self.execute(PwmListRequest(board_id=board_id))
 
     def start_pwm(self, board_id: str, channel: int) -> BoardActionResult:
-        return self.execute(board_id, "pwm_start", "pwm", {"channel": channel})
+        return self.execute(PwmStartRequest(board_id=board_id, channel=channel))
 
     def stop_pwm(self, board_id: str, channel: int) -> BoardActionResult:
-        return self.execute(board_id, "pwm_stop", "pwm", {"channel": channel})
+        return self.execute(PwmStopRequest(board_id=board_id, channel=channel))
 
     def set_pwm(self, board_id: str, channel: int, frequency: float, duty: float) -> BoardActionResult:
-        return self.execute(
-            board_id,
-            "pwm_set",
-            "pwm",
-            {"channel": channel, "frequency": frequency, "duty": duty},
-        )
+        return self.execute(PwmSetRequest(board_id=board_id, channel=channel, frequency=frequency, duty=duty))
 
     def list_adc(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "adc_list", "adc")
+        return self.execute(AdcListRequest(board_id=board_id))
 
     def read_adc(self, board_id: str, channel: int) -> BoardActionResult:
-        return self.execute(board_id, "adc_read", "adc", {"channel": channel})
+        return self.execute(AdcReadRequest(board_id=board_id, channel=channel))
 
     def list_dac(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "dac_list", "dac")
+        return self.execute(DacListRequest(board_id=board_id))
 
     def read_dac(self, board_id: str, channel: int) -> BoardActionResult:
-        return self.execute(board_id, "dac_read", "dac", {"channel": channel})
+        return self.execute(DacReadRequest(board_id=board_id, channel=channel))
 
     def set_dac(self, board_id: str, channel: int, value: int) -> BoardActionResult:
-        return self.execute(board_id, "dac_set", "dac", {"channel": channel, "value": value})
+        return self.execute(DacSetRequest(board_id=board_id, channel=channel, value=value))
 
     def scan_i2c(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "i2c_scan", "i2c")
+        return self.execute(I2cScanRequest(board_id=board_id))
 
     def read_i2c(self, board_id: str, address: str, register: str, length: int) -> BoardActionResult:
-        return self.execute(
-            board_id,
-            "i2c_read",
-            "i2c",
-            {"address": address, "register": register, "length": length},
-        )
+        return self.execute(I2cReadRequest(board_id=board_id, address=address, register=register, length=length))
 
     def write_i2c(self, board_id: str, address: str, register: str, data: str) -> BoardActionResult:
-        return self.execute(
-            board_id,
-            "i2c_write",
-            "i2c",
-            {"address": address, "register": register, "data": data},
-        )
+        return self.execute(I2cWriteRequest(board_id=board_id, address=address, register=register, data=data))
 
     def transfer_spi(self, board_id: str, data: str) -> BoardActionResult:
-        return self.execute(board_id, "spi_transfer", "spi", {"data": data})
+        return self.execute(SpiTransferRequest(board_id=board_id, data=data))
 
     def config_spi(self, board_id: str, baudrate: int, mode: int, msb_first: bool) -> BoardActionResult:
-        return self.execute(
-            board_id,
-            "spi_config",
-            "spi",
-            {"baudrate": baudrate, "mode": mode, "msb_first": msb_first},
-        )
+        return self.execute(SpiConfigRequest(board_id=board_id, baudrate=baudrate, mode=mode, msb_first=msb_first))
 
     def debug_logs(self, board_id: str, follow: bool = False) -> BoardActionResult:
-        return self.execute(board_id, "debug_logs", "debug_shell", {"follow": follow})
+        return self.execute(DebugLogsRequest(board_id=board_id, follow=follow))
 
     def debug_monitor(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "debug_monitor", "debug_shell")
+        return self.execute(DebugMonitorRequest(board_id=board_id))
 
     def debug_shell(self, board_id: str) -> BoardActionResult:
-        return self.execute(board_id, "debug_shell", "debug_shell")
+        return self.execute(DebugShellRequest(board_id=board_id))
 
     def board_info(self, board_id: str) -> Board | None:
         return self.get_board(board_id)
+
+    def real_board_info(self, board_id: str, port: str = "COM4") -> RealBoardInfoResult:
+        from trt.protocol.serial_protocol_client import SerialProtocolClient
+        from trt.transport.serial_transport import SerialTransport
+
+        protocol_client = SerialProtocolClient(SerialTransport(port=port))
+        info_response = protocol_client.send(BoardInfoRequest(board_id=board_id))
+        version_response = protocol_client.send(GetVersionRequest(board_id=board_id))
+        build_response = protocol_client.send(BuildIdRequest(board_id=board_id))
+
+        return RealBoardInfoResult(
+            board_id=board_id,
+            board_info=str(info_response.to_payload().get("board_type", "")),
+            fw_version=str(version_response.to_payload().get("version", "")),
+            build_id=str(build_response.to_payload().get("build_id", "")),
+            port=port,
+        )

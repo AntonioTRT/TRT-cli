@@ -2,112 +2,283 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from trt.protocol.models import ProtocolRequest, ProtocolResponse
+from trt.protocol.models import (
+    ActionResponse,
+    AdcListRequest,
+    AdcListResponse,
+    AdcReadRequest,
+    AdcReadResponse,
+    AnalogChannelState,
+    BoardCapabilitiesPayload,
+    BoardRebootRequest,
+    BoardResetRequest,
+    DacListRequest,
+    DacListResponse,
+    DacReadRequest,
+    DacReadResponse,
+    DacSetRequest,
+    DacSetResponse,
+    DebugLogsRequest,
+    DebugMonitorRequest,
+    DebugResponse,
+    DebugShellRequest,
+    DiscoverRequest,
+    DiscoverResponse,
+    DiscoveredBoardPayload,
+    GpioListRequest,
+    GpioListResponse,
+    GpioPinState,
+    GpioReadRequest,
+    GpioReadResponse,
+    GpioWriteRequest,
+    GpioWriteResponse,
+    I2cReadRequest,
+    I2cScanRequest,
+    I2cScanResponse,
+    I2cTransferResponse,
+    I2cWriteRequest,
+    LcdActionResponse,
+    LcdClearRequest,
+    LcdInfoRequest,
+    LcdInfoResponse,
+    LcdResetRequest,
+    LcdWriteRequest,
+    LedActionResponse,
+    LedBlinkRequest,
+    LedBrightnessRequest,
+    LedColorRequest,
+    LedOffRequest,
+    LedOnRequest,
+    ModulesListRequest,
+    ModulesListResponse,
+    ProtocolOperation,
+    ProtocolRequest,
+    ProtocolResponse,
+    PwmChannelState,
+    PwmListRequest,
+    PwmListResponse,
+    PwmSetRequest,
+    PwmStartRequest,
+    PwmStopRequest,
+    PwmActionResponse,
+    SpiConfigRequest,
+    SpiConfigResponse,
+    SpiTransferRequest,
+    SpiTransferResponse,
+    TransportPayload,
+)
 from trt.transport.base import Transport
 
 
 class MockTransport(Transport):
-    """Transport implementation that simulates device communication.
-
-    This is intentionally a mock implementation so the protocol layer can be
-    exercised without real USB/CAN/TCP connectivity.
-    """
+    """Transport implementation that simulates device communication."""
 
     def send(self, request: ProtocolRequest) -> ProtocolResponse:
-        operation = request.operation
-        payload = request.payload
+        if isinstance(request, DiscoverRequest):
+            return DiscoverResponse(board_id=request.board_id, boards=self._mock_boards())
 
-        if operation == "discover":
-            return self._response(request, {"boards": self._mock_boards()})
+        if isinstance(request, BoardResetRequest):
+            return ActionResponse(operation=request.operation, board_id=request.board_id, label="board reset", note=self._board_note(request.board_id))
 
-        if operation in {"board_reset", "board_reboot"}:
-            return self._response(request, {"label": operation.replace("_", " "), "note": self._board_note(request.board_id)})
+        if isinstance(request, BoardRebootRequest):
+            return ActionResponse(operation=request.operation, board_id=request.board_id, label="board reboot", note=self._board_note(request.board_id))
 
-        if operation == "modules_list":
-            return self._response(
-                request,
-                {
-                    "modules": [],
-                    "message": "No module data - firmware not connected.",
-                    "note": self._board_note(request.board_id),
-                },
+        if isinstance(request, ModulesListRequest):
+            return ModulesListResponse(
+                board_id=request.board_id,
+                modules=(),
+                message="No module data - firmware not connected.",
+                note=self._board_note(request.board_id),
             )
 
-        if request.capability == "gpio":
-            return self._response(request, self._gpio_payload(operation, payload, request.board_id))
+        if isinstance(request, GpioListRequest):
+            return GpioListResponse(board_id=request.board_id, pins=self._gpio_pins(), note=self._board_note(request.board_id))
 
-        if request.capability == "pwm":
-            return self._response(request, self._pwm_payload(operation, payload, request.board_id))
+        if isinstance(request, GpioReadRequest):
+            return GpioReadResponse(board_id=request.board_id, pin=request.pin, value="0")
 
-        if request.capability == "adc":
-            return self._response(request, self._adc_payload(operation, payload, request.board_id))
+        if isinstance(request, GpioWriteRequest):
+            return GpioWriteResponse(board_id=request.board_id, pin=request.pin, value=str(request.value))
 
-        if request.capability == "dac":
-            return self._response(request, self._dac_payload(operation, payload, request.board_id))
+        if isinstance(request, PwmListRequest):
+            return PwmListResponse(board_id=request.board_id, channels=self._pwm_channels(), note=self._board_note(request.board_id))
 
-        if request.capability == "i2c":
-            return self._response(request, self._i2c_payload(operation, payload, request.board_id))
+        if isinstance(request, PwmStartRequest | PwmStopRequest):
+            return PwmActionResponse(operation=request.operation, board_id=request.board_id, channel=request.channel)
 
-        if request.capability == "spi":
-            return self._response(request, self._spi_payload(operation, payload))
+        if isinstance(request, PwmSetRequest):
+            return PwmActionResponse(
+                operation=request.operation,
+                board_id=request.board_id,
+                channel=request.channel,
+                frequency=request.frequency,
+                duty=request.duty,
+            )
 
-        if request.capability == "debug_shell":
-            return self._response(request, self._debug_payload(operation, request.board_id))
+        if isinstance(request, AdcListRequest):
+            return AdcListResponse(board_id=request.board_id, channels=self._adc_channels(), note=self._board_note(request.board_id))
 
-        if request.capability == "lcd":
-            return self._response(request, self._lcd_payload(operation, payload))
+        if isinstance(request, AdcReadRequest):
+            return AdcReadResponse(board_id=request.board_id, channel=request.channel, value=0, millivolts="0.00")
 
-        if request.capability == "led":
-            return self._response(request, self._led_payload(operation, payload))
+        if isinstance(request, DacListRequest):
+            return DacListResponse(board_id=request.board_id, channels=self._dac_channels(), note=self._board_note(request.board_id))
 
-        return self._response(request, {"operation": operation, "value": payload})
+        if isinstance(request, DacReadRequest):
+            return DacReadResponse(board_id=request.board_id, channel=request.channel, value=0, millivolts="0.00")
+
+        if isinstance(request, DacSetRequest):
+            return DacSetResponse(board_id=request.board_id, channel=request.channel, value=request.value, millivolts="0.00")
+
+        if isinstance(request, I2cScanRequest):
+            return I2cScanResponse(
+                board_id=request.board_id,
+                devices=(),
+                message="No devices found - mock scan, no hardware connected.",
+                note=self._board_note(request.board_id),
+            )
+
+        if isinstance(request, I2cReadRequest):
+            return I2cTransferResponse(
+                operation=ProtocolOperation.I2C_READ,
+                board_id=request.board_id,
+                address=request.address,
+                register=request.register,
+                length=request.length,
+            )
+
+        if isinstance(request, I2cWriteRequest):
+            return I2cTransferResponse(
+                operation=ProtocolOperation.I2C_WRITE,
+                board_id=request.board_id,
+                address=request.address,
+                register=request.register,
+                data=request.data,
+            )
+
+        if isinstance(request, SpiTransferRequest):
+            return SpiTransferResponse(board_id=request.board_id, tx=request.data, rx="0x00")
+
+        if isinstance(request, SpiConfigRequest):
+            return SpiConfigResponse(
+                board_id=request.board_id,
+                baudrate=request.baudrate,
+                mode=request.mode,
+                msb_first=request.msb_first,
+            )
+
+        if isinstance(request, DebugLogsRequest | DebugMonitorRequest | DebugShellRequest):
+            return DebugResponse(
+                operation=request.operation,
+                board_id=request.board_id,
+                message=self._debug_message(request.operation),
+                note=self._board_note(request.board_id),
+            )
+
+        if isinstance(request, LcdInfoRequest):
+            return LcdInfoResponse(
+                board_id=request.board_id,
+                display_type="HD44780-compatible (I2C)",
+                columns="unknown - not connected",
+                rows="unknown - not connected",
+                backlight="unknown - not connected",
+                note=self._hardware_note("LCD"),
+            )
+
+        if isinstance(request, LcdResetRequest | LcdClearRequest):
+            return LcdActionResponse(
+                operation=request.operation,
+                board_id=request.board_id,
+                label=self._lcd_label(request.operation),
+                note=self._hardware_note("LCD"),
+            )
+
+        if isinstance(request, LcdWriteRequest):
+            return LcdActionResponse(
+                operation=request.operation,
+                board_id=request.board_id,
+                label="LCD write",
+                note=self._hardware_note("LCD"),
+                text=request.text,
+                line=request.line,
+                col=request.col,
+            )
+
+        if isinstance(request, LedOnRequest | LedOffRequest):
+            return LedActionResponse(
+                operation=request.operation,
+                board_id=request.board_id,
+                label=self._led_label(request.operation),
+                note=self._hardware_note("LED"),
+            )
+
+        if isinstance(request, LedBlinkRequest):
+            return LedActionResponse(
+                operation=request.operation,
+                board_id=request.board_id,
+                label="LED BLINK",
+                note=self._hardware_note("LED"),
+                count=request.count,
+                interval_ms=request.interval_ms,
+            )
+
+        if isinstance(request, LedBrightnessRequest):
+            return LedActionResponse(
+                operation=request.operation,
+                board_id=request.board_id,
+                label="LED BRIGHTNESS",
+                note=self._hardware_note("LED"),
+                level=request.level,
+            )
+
+        if isinstance(request, LedColorRequest):
+            return LedActionResponse(
+                operation=request.operation,
+                board_id=request.board_id,
+                label="LED COLOR",
+                note=self._hardware_note("LED"),
+                red=request.red,
+                green=request.green,
+                blue=request.blue,
+            )
+
+        return ActionResponse(operation=request.operation, board_id=request.board_id, label=request.operation.value)
 
     def is_available(self) -> bool:
         return True
 
-    def _response(self, request: ProtocolRequest, payload: dict[str, Any]) -> ProtocolResponse:
-        return ProtocolResponse(
-            status="ok",
-            payload=payload,
-            board_id=request.board_id,
-            capability=request.capability,
-            mock=True,
+    def _mock_boards(self) -> tuple[DiscoveredBoardPayload, ...]:
+        return (
+            DiscoveredBoardPayload(
+                board_id="board0",
+                board_type="TRT_CORE",
+                revision="A1",
+                firmware="0.1.0",
+                serial="000001",
+                status="ready",
+                transport=TransportPayload(transport_type="usb", port="COM3"),
+                capabilities=BoardCapabilitiesPayload(
+                    gpio=True,
+                    pwm=True,
+                    adc=True,
+                    dac=True,
+                    i2c=True,
+                    spi=True,
+                    uart=True,
+                    debug_shell=True,
+                ),
+            ),
+            DiscoveredBoardPayload(
+                board_id="board1",
+                board_type="Arduino",
+                revision="R3",
+                firmware="0.1.0",
+                serial="000002",
+                status="connected",
+                transport=TransportPayload(transport_type="usb", port="COM4"),
+                capabilities=BoardCapabilitiesPayload(gpio=True, pwm=True, adc=True, i2c=True),
+            ),
         )
-
-    def _mock_boards(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "board_id": "board0",
-                "board_type": "TRT_CORE",
-                "revision": "A1",
-                "firmware": "0.1.0",
-                "serial": "000001",
-                "status": "ready",
-                "transport": {"transport_type": "usb", "port": "COM3"},
-                "capabilities": {
-                    "gpio": True,
-                    "pwm": True,
-                    "adc": True,
-                    "dac": True,
-                    "i2c": True,
-                    "spi": True,
-                    "uart": True,
-                    "debug_shell": True,
-                },
-            },
-            {
-                "board_id": "board1",
-                "board_type": "Arduino",
-                "revision": "R3",
-                "firmware": "0.1.0",
-                "serial": "000002",
-                "status": "connected",
-                "transport": {"transport_type": "usb", "port": "COM4"},
-                "capabilities": {"gpio": True, "pwm": True, "adc": True, "i2c": True},
-            },
-        ]
 
     def _board_note(self, board_id: str) -> str:
         return f"Mock data for {board_id}. Real values will appear once TRT Protocol is implemented."
@@ -115,114 +286,51 @@ class MockTransport(Transport):
     def _hardware_note(self, capability: str) -> str:
         return f"Hardware not connected. {capability} support will be activated once TRT Protocol is implemented."
 
-    def _gpio_payload(self, operation: str, payload: dict[str, Any], board_id: str) -> dict[str, Any]:
-        if operation == "gpio_list":
-            return {
-                "pins": [
-                    {"pin": "PA0", "direction": "INPUT", "value": "0"},
-                    {"pin": "PA1", "direction": "INPUT", "value": "1"},
-                    {"pin": "PA5", "direction": "OUTPUT", "value": "1"},
-                    {"pin": "PB3", "direction": "OUTPUT", "value": "0"},
-                ],
-                "note": self._board_note(board_id),
-            }
-        return {"operation": operation, "pin": payload.get("pin", "unknown"), "value": payload.get("value", "0")}
+    def _gpio_pins(self) -> tuple[GpioPinState, ...]:
+        return (
+            GpioPinState(pin="PA0", direction="INPUT", value="0"),
+            GpioPinState(pin="PA1", direction="INPUT", value="1"),
+            GpioPinState(pin="PA5", direction="OUTPUT", value="1"),
+            GpioPinState(pin="PB3", direction="OUTPUT", value="0"),
+        )
 
-    def _pwm_channels(self) -> list[dict[str, Any]]:
-        return [
-            {"channel": "1", "frequency": "1000", "duty": "50", "state": "STOPPED"},
-            {"channel": "2", "frequency": "20000", "duty": "25", "state": "STOPPED"},
-        ]
+    def _pwm_channels(self) -> tuple[PwmChannelState, ...]:
+        return (
+            PwmChannelState(channel="1", frequency="1000", duty="50", state="STOPPED"),
+            PwmChannelState(channel="2", frequency="20000", duty="25", state="STOPPED"),
+        )
 
-    def _pwm_payload(self, operation: str, payload: dict[str, Any], board_id: str) -> dict[str, Any]:
-        if operation == "pwm_list":
-            return {"channels": self._pwm_channels(), "note": self._board_note(board_id)}
-        return {"operation": operation, **payload}
+    def _adc_channels(self) -> tuple[AnalogChannelState, ...]:
+        return (
+            AnalogChannelState(channel="1", resolution="12", reference="3.3V", value="-"),
+            AnalogChannelState(channel="2", resolution="12", reference="3.3V", value="-"),
+            AnalogChannelState(channel="3", resolution="12", reference="3.3V", value="-"),
+        )
 
-    def _adc_payload(self, operation: str, payload: dict[str, Any], board_id: str) -> dict[str, Any]:
-        if operation == "adc_list":
-            return {
-                "channels": [
-                    {"channel": "1", "resolution": "12", "reference": "3.3V", "last_value": "-"},
-                    {"channel": "2", "resolution": "12", "reference": "3.3V", "last_value": "-"},
-                    {"channel": "3", "resolution": "12", "reference": "3.3V", "last_value": "-"},
-                ],
-                "note": self._board_note(board_id),
-            }
-        return {"operation": operation, "channel": payload.get("channel", 0), "value": 0, "millivolts": "0.00"}
+    def _dac_channels(self) -> tuple[AnalogChannelState, ...]:
+        return (
+            AnalogChannelState(channel="1", resolution="12", reference="3.3V", value="0"),
+            AnalogChannelState(channel="2", resolution="12", reference="3.3V", value="0"),
+        )
 
-    def _dac_payload(self, operation: str, payload: dict[str, Any], board_id: str) -> dict[str, Any]:
-        if operation == "dac_list":
-            return {
-                "channels": [
-                    {"channel": "1", "resolution": "12", "reference": "3.3V", "current_value": "0"},
-                    {"channel": "2", "resolution": "12", "reference": "3.3V", "current_value": "0"},
-                ],
-                "note": self._board_note(board_id),
-            }
-        return {
-            "operation": operation,
-            "channel": payload.get("channel", 0),
-            "value": payload.get("value", 0),
-            "millivolts": "0.00",
-        }
-
-    def _i2c_payload(self, operation: str, payload: dict[str, Any], board_id: str) -> dict[str, Any]:
-        if operation == "i2c_scan":
-            return {
-                "operation": operation,
-                "devices": [],
-                "message": "No devices found - mock scan, no hardware connected.",
-                "note": self._board_note(board_id),
-            }
-        return {
-            "operation": operation,
-            "address": payload.get("address", "0x48"),
-            "register": payload.get("register", "0x00"),
-            "length": payload.get("length"),
-            "data": payload.get("data"),
-        }
-
-    def _spi_payload(self, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
-        if operation == "spi_transfer":
-            return {"operation": operation, "tx": payload.get("data", "0x00"), "rx": "0x00"}
-        return {
-            "operation": operation,
-            "baudrate": payload.get("baudrate", 1_000_000),
-            "mode": payload.get("mode", 0),
-            "msb_first": payload.get("msb_first", True),
-        }
-
-    def _debug_payload(self, operation: str, board_id: str) -> dict[str, Any]:
+    def _debug_message(self, operation: ProtocolOperation) -> str:
         messages = {
-            "debug_logs": "No log data - firmware not connected.",
-            "debug_monitor": "No data - firmware not connected.",
-            "debug_shell": "Interactive shell will be available once TRT Protocol is implemented.",
+            ProtocolOperation.DEBUG_LOGS: "No log data - firmware not connected.",
+            ProtocolOperation.DEBUG_MONITOR: "No data - firmware not connected.",
+            ProtocolOperation.DEBUG_SHELL: "Interactive shell will be available once TRT Protocol is implemented.",
         }
-        return {"operation": operation, "message": messages.get(operation, "No data - firmware not connected."), "note": self._board_note(board_id)}
+        return messages[operation]
 
-    def _lcd_payload(self, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
-        if operation == "lcd_info":
-            return {
-                "type": "HD44780-compatible (I2C)",
-                "columns": "unknown - not connected",
-                "rows": "unknown - not connected",
-                "backlight": "unknown - not connected",
-                "note": self._hardware_note("LCD"),
-            }
+    def _lcd_label(self, operation: ProtocolOperation) -> str:
         labels = {
-            "lcd_reset": "LCD reset",
-            "lcd_clear": "LCD clear",
-            "lcd_write": "LCD write",
+            ProtocolOperation.LCD_RESET: "LCD reset",
+            ProtocolOperation.LCD_CLEAR: "LCD clear",
         }
-        return {"operation": operation, "label": labels.get(operation, operation), "note": self._hardware_note("LCD"), **payload}
+        return labels[operation]
 
-    def _led_payload(self, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _led_label(self, operation: ProtocolOperation) -> str:
         labels = {
-            "led_on": "LED ON",
-            "led_off": "LED OFF",
-            "led_blink": "LED BLINK",
-            "led_brightness": "LED BRIGHTNESS",
-            "led_color": "LED COLOR",
+            ProtocolOperation.LED_ON: "LED ON",
+            ProtocolOperation.LED_OFF: "LED OFF",
         }
-        return {"operation": operation, "label": labels.get(operation, operation), "note": self._hardware_note("LED"), **payload}
+        return labels[operation]

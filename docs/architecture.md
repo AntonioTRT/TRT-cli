@@ -24,7 +24,8 @@ Developer / User
                                v
 ┌────────────────────────────────────────────────────────────┐
 │                     Protocol Layer                          │
-│  ProtocolRequest, ProtocolResponse, ProtocolClient,        │
+│  ProtocolOperation, typed requests/responses,              │
+│  ProtocolClient,                                           │
 │  MockProtocolClient                                        │
 │  src/trt/protocol/*.py                                     │
 └──────────────────────────────┬─────────────────────────────┘
@@ -134,7 +135,7 @@ The domain layer remains framework-independent and portable.
 - thin command adapters for board, discovery, LCD, and LED commands
 - board service layer
 - LED and LCD service layers
-- protocol request/response models
+- typed protocol operation, request, and response models
 - protocol client abstraction
 - mock transport as the only simulated hardware response generator
 - capability service
@@ -195,10 +196,13 @@ The protocol layer intentionally describes the data contract independent of hard
 
 Key abstractions:
 
-- `ProtocolRequest`: request payload for a device action
-- `ProtocolResponse`: response payload from a device action
+- `ProtocolOperation`: enum-backed operation identifiers
+- typed request dataclasses such as `DiscoverRequest`, `GpioReadRequest`, and `GpioWriteRequest`
+- typed response dataclasses such as `DiscoverResponse`, `GpioReadResponse`, and `GetCapabilitiesResponse`
 - `ProtocolClient`: abstract interface for sending protocol requests
 - `MockProtocolClient`: current mock implementation for tests and CLI execution
+
+Services now construct typed request objects instead of raw operation strings and unstructured request payload dictionaries. Transports return typed response objects, and services project them into CLI-facing result DTOs for rendering.
 
 This allows future real implementations to plug into the same service layer without changing CLI behavior.
 
