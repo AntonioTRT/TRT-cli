@@ -23,8 +23,8 @@ from trt.core.models import (
     BoardType,
     TransportConfig,
     TransportType,
-    make_mock_registry,
 )
+from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.board_service import BoardService
 from trt.services.capability_service import CapabilityService
 from trt.services.update_service import (
@@ -434,15 +434,17 @@ class TestBoardRegistry:
         assert reg.remove("z0") is False
 
     def test_clear(self) -> None:
-        reg = make_mock_registry()
-        assert len(reg) == 2
+        reg = BoardRegistry()
+        reg.register(Board(identity=BoardIdentity(board_id="board0", board_type=BoardType.TRT_CORE)))
+        assert len(reg) == 1
         reg.clear()
         assert len(reg) == 0
 
-    def test_mock_registry(self) -> None:
-        reg = make_mock_registry()
-        assert len(reg) == 2
-        board0 = reg.get("board0")
+    def test_discovery_service_populates_registry_from_transport(self) -> None:
+        service = BoardDiscoveryService()
+        boards = service.discover()
+        assert len(boards) == 2
+        board0 = service.repository.get_by_id("board0")
         assert board0 is not None
         assert board0.capabilities.gpio is True
         assert board0.capabilities.has("pwm") is True

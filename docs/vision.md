@@ -58,9 +58,9 @@ The repo currently delivers the foundation of that vision:
 
 - command layer exists
 - board and capability domain models exist
-- service layer exists
+- service layer exists for board, discovery, LCD, and LED operations
 - protocol request/response abstractions exist
-- mock transport implementation exists
+- mock transport implementation exists and is the only simulated hardware response generator
 
 The remaining parts are intentionally deferred and remain future work:
 
@@ -100,7 +100,7 @@ The remaining parts are intentionally deferred and remain future work:
 - CLI scaffold and command structure
 - Rich help and output
 - typed domain model
-- mock board registry
+- discovery-backed board state through the protocol and mock transport path
 - service layer and protocol abstractions
 
 ### Milestone 2 — Real protocol client

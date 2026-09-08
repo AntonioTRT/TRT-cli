@@ -9,6 +9,8 @@ hardware behavior.
 from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.board_service import BoardService
 from trt.services.capability_service import CapabilityService
+from trt.services.lcd_service import LCDService
+from trt.services.led_service import LEDService
 from trt.services.update_service import (
     InstallMethod,
     UpdateStatus,
@@ -21,6 +23,8 @@ __all__ = [
     "BoardDiscoveryService",
     "BoardService",
     "CapabilityService",
+    "LCDService",
+    "LEDService",
     "InstallMethod",
     "UpdateStatus",
     "check_for_update",

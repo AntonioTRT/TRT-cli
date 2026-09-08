@@ -16,7 +16,8 @@ Developer / User
                                v
 ┌────────────────────────────────────────────────────────────┐
 │                Application Services Layer                   │
-│  BoardService, BoardDiscoveryService, CapabilityService    │
+│  BoardService, BoardDiscoveryService, CapabilityService,   │
+│  LCDService, LEDService                                    │
 │  src/trt/services/*.py                                     │
 └──────────────────────────────┬─────────────────────────────┘
                                │
@@ -38,7 +39,8 @@ Developer / User
                                v
 ┌────────────────────────────────────────────────────────────┐
 │                    Mock Device Layer                        │
-│  Simulated GPIO, ADC, SPI, I2C interactions                 │
+│  Simulated discovery, GPIO, PWM, ADC, DAC, I2C, SPI,       │
+│  debug, LCD, and LED interactions                           │
 │  intentional mock-only communication layer                  │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -56,6 +58,8 @@ Files:
 - [src/trt/commands/board.py](../src/trt/commands/board.py)
 - [src/trt/commands/boards.py](../src/trt/commands/boards.py)
 - [src/trt/commands/discover.py](../src/trt/commands/discover.py)
+- [src/trt/commands/lcd.py](../src/trt/commands/lcd.py)
+- [src/trt/commands/led.py](../src/trt/commands/led.py)
 
 Responsibilities:
 - parse command-line arguments
@@ -63,7 +67,7 @@ Responsibilities:
 - format console output
 - preserve the existing user experience
 
-This layer does not construct board registries directly anymore and no longer performs business rules from within the command functions.
+This layer does not construct board registries, generate mock responses, create fake hardware values, or simulate board state. Command handlers parse arguments, call services, and render returned values.
 
 ### Application Services Layer
 
@@ -71,12 +75,15 @@ Files:
 - [src/trt/services/board_service.py](../src/trt/services/board_service.py)
 - [src/trt/services/board_discovery_service.py](../src/trt/services/board_discovery_service.py)
 - [src/trt/services/capability_service.py](../src/trt/services/capability_service.py)
+- [src/trt/services/lcd_service.py](../src/trt/services/lcd_service.py)
+- [src/trt/services/led_service.py](../src/trt/services/led_service.py)
 - [src/trt/services/update_service.py](../src/trt/services/update_service.py)
 
 Responsibilities:
 - board lookup and state coordination
 - capability enforcement
 - discovery orchestration
+- LCD and LED operation orchestration
 - update checking/install preparation
 
 This is the place where business logic belongs in the current project structure.
@@ -124,11 +131,12 @@ The domain layer remains framework-independent and portable.
 ### Implemented today
 
 - Typer CLI with rich output
-- mock board registry and mock discovery
+- thin command adapters for board, discovery, LCD, and LED commands
 - board service layer
+- LED and LCD service layers
 - protocol request/response models
 - protocol client abstraction
-- mock transport abstraction
+- mock transport as the only simulated hardware response generator
 - capability service
 
 ### Planned for the future
@@ -148,7 +156,7 @@ This distinction is intentional: current code is mock-backed by design, not a pr
 
 ```text
 CLI
-  -> BoardService / DiscoveryService / CapabilityService
+    -> BoardService / DiscoveryService / CapabilityService / LCDService / LEDService
       -> ProtocolClient
           -> Transport
               -> MockDevice
@@ -156,9 +164,10 @@ CLI
 
 Dependency direction rules now follow the intended architecture:
 
-- CLI depends on services
+- CLI depends on services and renders returned data
 - Services depend on protocol and repository abstractions
 - Protocol depends on transport abstractions
+- MockTransport generates simulated device responses
 - Transport does not depend on CLI or services
 - Domain models remain independent
 
@@ -174,7 +183,7 @@ Examples:
 
 - `BoardCapabilities.has()` in [src/trt/core/models.py](../src/trt/core/models.py)
 - `CapabilityService.supports()` in [src/trt/services/capability_service.py](../src/trt/services/capability_service.py)
-- `_require_board()` in [src/trt/commands/board.py](../src/trt/commands/board.py)
+- `BoardService.ensure_capability()` in [src/trt/services/board_service.py](../src/trt/services/board_service.py)
 
 This keeps the CLI from hard-coding board family assumptions such as STM32, RP2040, or Arduino checks in the command layer.
 
@@ -202,7 +211,7 @@ The transport layer now defines the future extension points.
 Key abstractions:
 
 - `Transport`: abstract interface
-- `MockTransport`: current implementation used by the CLI
+- `MockTransport`: current mock device boundary used by services through the protocol client
 
 Planned future implementations:
 
@@ -210,7 +219,7 @@ Planned future implementations:
 - `CANTransport`
 - `TCPTransport`
 
-The important architectural point is that the protocol layer depends on the transport interface, not on a specific transport backend.
+The important architectural point is that the protocol layer depends on the transport interface, not on a specific transport backend. In the current codebase, `MockTransport` is also the only component that creates simulated hardware payloads.
 
 ---
 
