@@ -108,6 +108,8 @@ pip uninstall trt-cli
 
 ## Desarrollo
 
+Para añadir nuevos comandos `trt`, consulta [docs/adding-commands.md](docs/adding-commands.md).
+
 ```powershell
 pip install -e ".[dev]"
 pytest
