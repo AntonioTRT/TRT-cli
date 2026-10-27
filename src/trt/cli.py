@@ -23,6 +23,8 @@ Command tree:
     trt protocol info | version
 """
 
+import sys
+
 import typer
 
 from trt.commands.board import board_app
@@ -104,6 +106,12 @@ def discover() -> None:
 
 def main() -> None:
     """Entry point — called by the [cyan]trt[/cyan] console script."""
+    # Hidden developer area (see trt/commands/dev.py). Handled before Typer runs
+    # so it never appears in any help output. Keep this undocumented.
+    if sys.argv[1:2] == ["--dev"]:
+        from trt.commands.dev import run_dev
+
+        raise SystemExit(run_dev(sys.argv[2:]))
     app()
 
 

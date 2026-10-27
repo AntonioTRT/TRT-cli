@@ -98,8 +98,9 @@ class TestHelpCommand:
         result = runner.invoke(app, ["help"])
         assert "boards" in result.stdout
         assert "discover" in result.stdout
-        assert "gpio" in result.stdout
-        assert "pwm" in result.stdout
+        assert "capabilities" in result.stdout
+        assert "gpio" not in result.stdout
+        assert "pwm" not in result.stdout
 
     def test_help_shows_update(self) -> None:
         result = runner.invoke(app, ["help"])
@@ -447,6 +448,46 @@ class TestMockBoardOperations:
     def test_mock_spi_transfer(self) -> None:
         result = self.service().transfer_spi("board0", "0x00")
         assert result.status == "ok"
+
+
+class TestDevMode:
+    """Hidden `trt --dev` area (internal; see trt/commands/dev.py)."""
+
+    def test_list(self, capsys) -> None:
+        from trt.commands.dev import run_dev
+
+        assert run_dev([]) == 0
+        out = capsys.readouterr().out
+        assert "Available development commands" in out
+        for name in ("antonio", "caleb", "angel"):
+            assert name in out
+
+    @pytest.mark.parametrize("name", ["antonio", "caleb", "angel"])
+    def test_each_command(self, name, capsys) -> None:
+        from trt.commands.dev import run_dev
+
+        assert run_dev([name]) == 0
+        assert f"{name.capitalize()} test function" in capsys.readouterr().out
+
+    def test_unknown(self) -> None:
+        from trt.commands.dev import run_dev
+
+        assert run_dev(["nope"]) == 1
+
+    def test_main_dispatches_dev(self, monkeypatch, capsys) -> None:
+        from trt.cli import main
+
+        monkeypatch.setattr("sys.argv", ["trt", "--dev", "caleb"])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        assert "Caleb test function" in capsys.readouterr().out
+
+    def test_not_in_help(self) -> None:
+        for args in (["help"], ["--help"]):
+            out = runner.invoke(app, args).stdout
+            assert "--dev" not in out
+            assert "antonio" not in out and "caleb" not in out and "angel" not in out
 
 
 if __name__ == "__main__":
