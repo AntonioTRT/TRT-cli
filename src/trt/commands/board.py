@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from trt.core.models import Board
+from trt.repositories.board_repository import BoardRepository
 from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.board_service import BoardActionResult, BoardService, RealBoardInfoResult
 
@@ -26,16 +27,23 @@ board_app = typer.Typer(
 @board_app.command("info", help="Show board identity and firmware information")
 def board_info(
     board_id: str = typer.Argument(..., help="Board identifier, e.g. board0"),
+    port: str | None = typer.Option(None, "--port", "-p", help="Serial port, e.g. COM5"),
 ) -> None:
-    service = BoardService()
-    if board_id.isdigit():
+    numeric_board_id: int | None
+    try:
+        numeric_board_id = int(board_id, 0)
+    except ValueError:
+        numeric_board_id = int(board_id) if board_id.isdigit() else None
+    if numeric_board_id is not None:
+        service = BoardService(repository=BoardRepository())
         try:
-            _render_real_board_info(service.real_board_info(board_id, port="COM4"))
-        except (RuntimeError, TimeoutError, ValueError) as error:
+            _render_real_board_info(service.real_board_info(str(numeric_board_id), port=port))
+        except (OSError, RuntimeError, TimeoutError, ValueError) as error:
             console.print(f"\n  [red]Real TRT transaction failed:[/red] {error}\n")
             raise typer.Exit(1) from error
         return
 
+    service = BoardService()
     board = service.board_info(board_id)
     console.print()
     if board is None:
@@ -432,9 +440,14 @@ def _render_real_board_info(result: RealBoardInfoResult) -> None:
     table.add_column("value", style="bold white")
     table.add_row("Board ID", result.board_id)
     table.add_row("Port", result.port)
-    table.add_row("BOARD_INFO", result.board_info)
+    table.add_row("BOARD_VERSION", result.board_version or "-")
+    table.add_row("INFO", result.board_info)
     table.add_row("FW_VERSION", result.fw_version)
     table.add_row("BUILD_ID", result.build_id)
+    for field_name, value in result.info.items():
+        table.add_row(f"INFO.{field_name.upper()}", value)
+    if result.capabilities:
+        table.add_row("CAPABILITIES", ", ".join(result.capabilities))
     console.print()
     console.print(Panel(table, title=f"[bold cyan]{result.board_id}[/bold cyan]", border_style="bright_blue", expand=False))
     console.print()

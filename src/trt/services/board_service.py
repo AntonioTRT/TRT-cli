@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from trt.core.models import Board
@@ -19,10 +19,10 @@ from trt.protocol.models import (
     DebugLogsRequest,
     DebugMonitorRequest,
     DebugShellRequest,
+    GetVersionRequest,
     GpioListRequest,
     GpioReadRequest,
     GpioWriteRequest,
-    GetVersionRequest,
     I2cReadRequest,
     I2cScanRequest,
     I2cWriteRequest,
@@ -36,6 +36,8 @@ from trt.protocol.models import (
     SpiTransferRequest,
 )
 from trt.protocol.protocol_client import MockProtocolClient, ProtocolClient
+from trt.protocol.v01 import decode_capability_ids, decode_info_payload
+from trt.repositories.board_cache import load_serial_connections, save_serial_connections
 from trt.repositories.board_repository import BoardRepository
 from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.capability_service import CapabilityService
@@ -60,6 +62,9 @@ class RealBoardInfoResult:
     fw_version: str
     build_id: str
     port: str
+    board_version: str = ""
+    info: dict[str, str] = field(default_factory=dict)
+    capabilities: tuple[str, ...] = ()
 
 
 class BoardService:
@@ -183,23 +188,101 @@ class BoardService:
     def board_info(self, board_id: str) -> Board | None:
         return self.get_board(board_id)
 
-    def real_board_info(self, board_id: str, port: str = "COM4") -> RealBoardInfoResult:
+    def real_board_info(self, board_id: str, port: str | None = None) -> RealBoardInfoResult:
         from trt.protocol.serial_protocol_client import SerialProtocolClient
         from trt.transport.serial_transport import SerialTransport
 
-        transport = SerialTransport(port=port)
-        protocol_client = SerialProtocolClient(transport)
         try:
-            info_response = protocol_client.send(BoardInfoRequest(board_id=board_id))
-            version_response = protocol_client.send(GetVersionRequest(board_id=board_id))
-            build_response = protocol_client.send(BuildIdRequest(board_id=board_id))
+            numeric_board_id = int(board_id, 0)
+        except ValueError:
+            if not board_id.isdigit():
+                raise ValueError(f"Serial TRT board id must be numeric, got {board_id!r}")
+            numeric_board_id = int(board_id)
+        resolved_board_id = str(numeric_board_id)
+        baudrate = 115200
+        if port is None:
+            saved_connection = load_serial_connections().get(resolved_board_id)
+            if saved_connection is not None:
+                port = saved_connection["port"]
+                baudrate = saved_connection["baudrate"]
+            else:
+                discovery = BoardDiscoveryService()
+                discovery.discover_serial()
+                board = discovery.repository.get_by_id(resolved_board_id)
+                if board is None or board.transport is None or board.transport.port is None:
+                    raise ValueError(
+                        f"Board {resolved_board_id} was not discovered. "
+                        "Run 'trt discover' or pass --port COMx."
+                    )
+                port = board.transport.port
+                baudrate = board.transport.baudrate or baudrate
+
+        transport = SerialTransport(port=port, baudrate=baudrate)
+        try:
+            ping = transport.exchange_command(0x0001, resolved_board_id)
+            if ping.command == 0x8001:
+                resolved_board_id = str(ping.board_id)
+                board_version = transport.exchange_command(0x0003, resolved_board_id)
+                info_frame = transport.exchange_command(0x0004, resolved_board_id)
+                capabilities_frame = transport.exchange_command(0x0006, resolved_board_id)
+                version_frame = transport.exchange_command(0x0002, resolved_board_id)
+                build_frame = transport.exchange_command(0x0007, resolved_board_id)
+                frames = (board_version, info_frame, capabilities_frame, version_frame, build_frame)
+                for response in frames:
+                    if response.board_id != ping.board_id or response.command != 0x8003:
+                        raise ValueError(
+                            f"Unexpected response 0x{response.command:04X} "
+                            f"for board {resolved_board_id}"
+                        )
+                info = decode_info_payload(info_frame.payload)
+                capability_ids = decode_capability_ids(capabilities_frame.payload)
+                if capability_ids is None:
+                    raise ValueError("CAPABILITIES response has an invalid V0.1 payload")
+                capability_names = {
+                    0x0001: "SYSTEM",
+                    0x0002: "GPIO",
+                    0x0003: "PWM",
+                    0x0004: "ADC",
+                    0x0005: "DAC",
+                    0x0006: "SPI",
+                    0x0007: "I2C",
+                    0x0008: "LCD",
+                    0x0009: "LED",
+                    0x000A: "RELAY",
+                }
+                result = RealBoardInfoResult(
+                    board_id=resolved_board_id,
+                    board_info=info.get("board_type", "Unknown"),
+                    fw_version=".".join(str(value) for value in version_frame.payload),
+                    build_id=build_frame.payload.decode("utf-8", errors="replace"),
+                    port=port,
+                    board_version=board_version.payload.decode("utf-8", errors="replace"),
+                    info=info,
+                    capabilities=tuple(
+                        capability_names.get(value, f"0x{value:04X}")
+                        for value in capability_ids
+                    ),
+                )
+                save_serial_connections(
+                    {resolved_board_id: {"port": port, "baudrate": baudrate}}
+                )
+                return result
+            if ping.command != 0x8002:
+                raise ValueError(f"PING returned unexpected response 0x{ping.command:04X}")
+
+            protocol_client = SerialProtocolClient(transport)
+            info_response = protocol_client.send(BoardInfoRequest(board_id=resolved_board_id))
+            version_response = protocol_client.send(GetVersionRequest(board_id=resolved_board_id))
+            build_response = protocol_client.send(BuildIdRequest(board_id=resolved_board_id))
         finally:
             transport.close()
 
-        return RealBoardInfoResult(
-            board_id=board_id,
+        result = RealBoardInfoResult(
+            board_id=resolved_board_id,
             board_info=str(info_response.to_payload().get("board_type", "")),
             fw_version=str(version_response.to_payload().get("version", "")),
             build_id=str(build_response.to_payload().get("build_id", "")),
             port=port,
         )
+        save_serial_connections({resolved_board_id: {"port": port, "baudrate": baudrate}})
+        return result

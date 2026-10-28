@@ -323,6 +323,7 @@ class LedColorRequest(ProtocolRequest):
 
 @dataclass(frozen=True)
 class BoardCapabilitiesPayload:
+    system: bool = False
     gpio: bool = False
     pwm: bool = False
     adc: bool = False
@@ -334,6 +335,7 @@ class BoardCapabilitiesPayload:
     lcd: bool = False
     relay: bool = False
     debug_shell: bool = False
+    led: bool = False
 
     def to_dict(self) -> dict[str, bool]:
         return self.__dict__.copy()

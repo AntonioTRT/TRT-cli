@@ -30,10 +30,12 @@ import typer
 from trt.commands.board import board_app
 from trt.commands.boards import show_boards
 from trt.commands.discover import run_discover
+from trt.commands.flash import app as flash_app
 from trt.commands.help import show_help
 from trt.commands.lcd import app as lcd_app
 from trt.commands.led import app as led_app
 from trt.commands.protocol import app as protocol_app
+from trt.commands.stm32 import app as stm32_app
 from trt.commands.update import run_update
 from trt.commands.version import show_version
 
@@ -48,6 +50,8 @@ app.add_typer(board_app,    name="board",    help="Operate on a specific board")
 app.add_typer(lcd_app,      name="lcd",      help="LCD display control")
 app.add_typer(led_app,      name="led",      help="LED control (WS2812 / NeoPixel)")
 app.add_typer(protocol_app, name="protocol", help="TRT Protocol information")
+app.add_typer(flash_app, name="flash", help="Build and upload board firmware")
+app.add_typer(stm32_app, name="stm32", help="STM32 board diagnostics")
 
 
 # ---------------------------------------------------------------------------
@@ -117,4 +121,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

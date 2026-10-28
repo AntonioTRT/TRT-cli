@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-
 # ---------------------------------------------------------------------------
 # Enumerations
 # ---------------------------------------------------------------------------
@@ -111,6 +110,7 @@ class BoardCapabilities:
     for a given board, so all hardware-specific gating flows through here.
     """
 
+    system: bool = False
     gpio: bool = False
     pwm: bool = False
     adc: bool = False
@@ -122,6 +122,7 @@ class BoardCapabilities:
     lcd: bool = False
     relay: bool = False
     debug_shell: bool = False
+    led: bool = False
     # Extension point: modules can add capabilities via this dict
     custom: dict[str, bool] = field(default_factory=dict)
 
@@ -139,6 +140,7 @@ class BoardCapabilities:
     def as_dict(self) -> dict[str, bool]:
         """Return all standard capabilities as a plain dict."""
         standard = {
+            "system": self.system,
             "gpio": self.gpio,
             "pwm": self.pwm,
             "adc": self.adc,
@@ -150,6 +152,7 @@ class BoardCapabilities:
             "lcd": self.lcd,
             "relay": self.relay,
             "debug_shell": self.debug_shell,
+            "led": self.led,
         }
         standard.update(self.custom)
         return standard
@@ -267,5 +270,4 @@ class BoardRegistry:
 
     def __iter__(self):  # type: ignore[override]
         return iter(self._boards.values())
-
 

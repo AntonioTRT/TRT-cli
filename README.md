@@ -85,6 +85,26 @@ trt board capabilities 101
 
 `trt discover` enumerates available serial ports, probes them with TRT protocol frames, and lists compatible boards.
 
+### STM32 NUCLEO-L073RZ
+
+From the workspace root containing `TRT-core/TRT-stm32`, build and upload via
+the ST-LINK probe (PlatformIO Core must be installed):
+
+```powershell
+trt flash stm32
+trt flash stm32 --port COM5
+trt stm32 test
+trt stm32 test --port COM5
+trt board info 2
+trt board info 2 --port COM5
+```
+
+The protocol test scans serial ports if `--port` is omitted and verifies PING,
+FW_VERSION, BOARD_VERSION, INFO, STATUS, and CAPABILITIES at 115200 baud, 8N1.
+`trt discover` saves each detected serial board ID, COM port, and baudrate in
+`%USERPROFILE%\.trt\boards.json`; `trt board info 2` uses that saved port or
+performs a discovery scan if there is no cached connection.
+
 ---
 
 ## Architecture

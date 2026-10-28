@@ -12,6 +12,36 @@ trt --install-completion    Install shell completion
 trt --show-completion       Show completion script
 ```
 
+## STM32 NUCLEO-L073RZ
+
+```powershell
+trt flash stm32 [--port COM5] [--project-dir PATH]
+trt stm32 test [--port COM5] [--board-id 0x0002]
+trt board info 2 [--port COM5]
+```
+
+`flash stm32` invokes `python -m platformio run -d <TRT-stm32> -t upload`;
+when no `--port` is supplied, ST-LINK/PlatformIO selects the upload port.
+`stm32 test` scans serial ports unless one is specified and sends all six
+TRT v0.1 requests at 115200 baud, 8N1. It checks PING for ACK `0x8001`,
+the five data commands for response `0x8003`, and decodes INFO, STATUS, and
+the capability identifier list. V0.1 CRC fields are emitted as `0x0000`,
+matching the current TRT-core encoder.
+
+Example test against the Nucleo's ST-LINK virtual COM port:
+
+```powershell
+trt stm32 test --port COM5
+```
+
+Discovery scans every serial COM port (without VID/PID filtering), tries the
+TRT v0.1 PING/ACK handshake before STM32 identity queries, and caches board ID,
+port, and 115200 baudrate in `%USERPROFILE%\.trt\boards.json`.
+`trt board info 2` resolves the cached port or performs a discovery scan;
+`--port COM5` bypasses port resolution. The info command reads PING, BOARD_VERSION,
+INFO, CAPABILITIES, FW_VERSION, and BUILD_ID. It exits non-zero if the device
+does not return valid protocol responses.
+
 ---
 
 ## Debug Flags

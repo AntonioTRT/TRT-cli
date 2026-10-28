@@ -39,6 +39,12 @@ def show_help() -> None:
     top.add_row("trt discover", "Scan serial ports for TRT boards")
     top.add_row("trt boards", "List boards found by serial discovery")
     top.add_row("trt board <command> <id>", "Query a discovered board (see below)")
+    top.add_row("trt flash stm32", "Build and upload STM32 firmware")
+    top.add_row("trt stm32 test", "Test the full TRT v0.1 serial protocol")
+    top.add_row("trt board <board> ...", "Operate on a specific board")
+    top.add_row("trt lcd ...", "LCD display control")
+    top.add_row("trt led ...", "LED control (WS2812 / NeoPixel)")
+    top.add_row("trt protocol ...", "TRT Protocol information")
 
     console.print(Padding("[bold]Top-level commands[/bold]", (0, 2)))
     console.print(Padding(top, (0, 2)))
@@ -75,4 +81,3 @@ def show_help() -> None:
         )
     )
     console.print()
-
