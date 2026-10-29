@@ -16,12 +16,63 @@ trt --show-completion       Show completion script
 
 ```powershell
 trt list-programs stm32 [--project-dir PATH]
+trt board <id|name|type|revision|version|build-id|runtime|active-program|uptime|transport> <board-id> [--port COM5]
 trt build stm32 <program> [--project-dir PATH]
 trt flash stm32 [program] [--project-dir PATH]
 trt flash stm32 --platformio [--port COM5] [--project-dir PATH]
 trt stm32 test [--port COM5] [--board-id 0x0002]
 trt board info 2 [--port COM5]
 ```
+
+`board <query> <board-id>` are read-only queries; each asks the board for one value it
+already knows and prints it (`--port` overrides the saved/discovered port):
+
+| Command | Source |
+|---|---|
+| `board id` | board ID in the reply frame |
+| `board name` | INFO field 0x01 |
+| `board type` | INFO field 0x06 (board family: Arduino, STM32, ESP32, ...) |
+| `board revision` | BOARD_VERSION |
+| `board version` | FW_VERSION |
+| `board build-id` | BUILD_ID |
+| `board runtime` | RUNTIME (`RUNNING`) |
+| `board active-program` | ACTIVE_PROGRAM |
+| `board uptime` | UPTIME (`DD HH:MM:SS.mmm (N ms)`) |
+| `board transport` | the host's connection (port and baud rate); no firmware query |
+
+#### Which command to use
+
+| Command | Purpose | Source | Notes |
+|---|---|---|---|
+| `board info` | Everything at once: ID, port, revision, firmware, build ID, INFO fields, capabilities | live, 6 requests | Aggregates `id`, `name`, `type`, `revision`, `version`, `build-id`, `capabilities`; use it for a human overview |
+| `board version` | Firmware version only | live, FW_VERSION | For scripts |
+| `board build-id` | Build identifier only | live, BUILD_ID | Not part of INFO; unique among the single-value queries except via `board info` |
+| `board name` | Board name | live, INFO 0x01 | |
+| `board type` | Board family (Arduino, STM32, ESP32, ...) | live, INFO 0x06 | Distinct from `name` |
+| `board revision` | Hardware revision | live, BOARD_VERSION | |
+| `board id` | Confirms which ID the board replies with | live, reply header | You already pass the ID in; `trt boards` lists IDs |
+| `board runtime` | TRT-Core runtime state | live, RUNTIME | Currently only `RUNNING` |
+| `board active-program` | Application on the board | live, ACTIVE_PROGRAM | Unique |
+| `board uptime` | Time since boot | live, UPTIME | Unique |
+| `board transport` | How the host reaches the board | host, saved/discovered connection | No firmware query |
+| `board capabilities` | Capability list | discovery scan, then render | Also shown in `board info` |
+| `board status` | Board status | discovery cache | See below |
+
+Overlaps that exist and are intentional or fixed by the protocol:
+
+- `board info` repeats what the single-value commands return; the single-value commands exist for scripting and quick checks.
+- On the wire, the firmware version is sent twice (FW_VERSION and INFO field 0x03), the revision twice (BOARD_VERSION and INFO field 0x02), and INFO fields 0x01 (name) and 0x05 (serial placeholder) carry the same string. The V0.1 identifiers are frozen, so these stay.
+- The decoded INFO key `board_type` holds the board *name* (V0.1 naming), while `board type` shows the *family*. `board info` prints the former as `INFO.BOARD_TYPE` and the latter as `INFO.FAMILY`.
+
+Findings that are not duplication but worth knowing:
+
+- `board status` reads the discovery cache (discovery records every found board as `ready`); it does not send STATUS to the board, unlike every other query. The firmware's STATUS reply is only exercised by `trt stm32 test`.
+- `board id` and `board runtime` carry little information: the first echoes the ID you supplied, the second can only say `RUNNING` because any reply proves the runtime is polling.
+
+`board info`, `board status` and `board capabilities` are unchanged. If the firmware does not
+provide a value (older firmware, or no clock / no active program declared), the command prints
+`unsupported` and exits with code 2; other failures exit with code 1. Build date and build time
+are not available in TRT-Core and have no command.
 
 `list-programs stm32` prints one application name per line, discovered from the
 files `Sources/programs/program_*.c` of the STM32CubeIDE project (sorted; read-only,

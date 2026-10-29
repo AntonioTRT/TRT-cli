@@ -12,6 +12,7 @@ def decode_info_payload(payload: bytes) -> dict[str, str]:
         0x03: "firmware",
         0x04: "protocol",
         0x05: "serial",
+        0x06: "family",
     }
     count = payload[0]
     offset = 1

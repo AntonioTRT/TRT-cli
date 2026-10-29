@@ -114,6 +114,47 @@ def board_listen(
     run_listen(board_id)
 
 
+# Read-only queries: each asks the board for one value it already knows (see BoardQueryService).
+_QUERY_HELP = {
+    "id": "Show the board ID",
+    "name": "Show the board name",
+    "type": "Show the board type (family: Arduino, STM32, ESP32, ...)",
+    "revision": "Show the board hardware revision",
+    "version": "Show the firmware version",
+    "build-id": "Show the firmware build identifier",
+    "runtime": "Show the TRT-Core runtime state",
+    "active-program": "Show the application running on the board",
+    "uptime": "Show the board uptime since boot",
+    "transport": "Show the transport used to reach the board",
+}
+
+
+def _register_query(item: str, help_text: str) -> None:
+    def command(
+        board_id: str = typer.Argument(..., help="Numeric board identifier, e.g. 101"),
+        port: str | None = typer.Option(None, "--port", "-p", help="Serial port, e.g. COM5"),
+    ) -> None:
+        from trt.services.board_query_service import BoardQueryService, QueryUnsupportedError
+
+        console.print()
+        try:
+            result = BoardQueryService().query(board_id, item, port=port)
+        except QueryUnsupportedError as error:
+            console.print(f"  [yellow]{board_id}[/yellow]  {item}: [yellow]unsupported[/yellow] - {error}\n")
+            raise typer.Exit(2) from error
+        except (OSError, RuntimeError, TimeoutError, ValueError) as error:
+            console.print(f"  [red]Real TRT transaction failed:[/red] {error}\n")
+            raise typer.Exit(1) from error
+        console.print(f"  [cyan]{result.board_id}[/cyan]  {item}: [bold]{result.value}[/bold]\n", highlight=False)
+
+    command.__name__ = f"board_{item.replace('-', '_')}"
+    board_app.command(item, help=help_text)(command)
+
+
+for _item, _help in _QUERY_HELP.items():
+    _register_query(_item, _help)
+
+
 @board_app.command("modules", help="List loaded modules on the board")
 def board_modules(
     board_id: str = typer.Argument(..., help="Board identifier"),

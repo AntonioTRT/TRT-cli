@@ -67,6 +67,38 @@ class RealBoardInfoResult:
     capabilities: tuple[str, ...] = ()
 
 
+def resolve_serial_connection(board_id: str, port: str | None = None) -> tuple[str, str, int]:
+    """Resolve a numeric board id to (board id, serial port, baudrate).
+
+    Uses --port when given, else the saved connection, else a serial discovery.
+    """
+    try:
+        numeric_board_id = int(board_id, 0)
+    except ValueError:
+        if not board_id.isdigit():
+            raise ValueError(f"Serial TRT board id must be numeric, got {board_id!r}")
+        numeric_board_id = int(board_id)
+    resolved_board_id = str(numeric_board_id)
+    baudrate = 115200
+    if port is None:
+        saved_connection = load_serial_connections().get(resolved_board_id)
+        if saved_connection is not None:
+            port = saved_connection["port"]
+            baudrate = saved_connection["baudrate"]
+        else:
+            discovery = BoardDiscoveryService()
+            discovery.discover_serial()
+            board = discovery.repository.get_by_id(resolved_board_id)
+            if board is None or board.transport is None or board.transport.port is None:
+                raise ValueError(
+                    f"Board {resolved_board_id} was not discovered. "
+                    "Run 'trt discover' or pass --port COMx."
+                )
+            port = board.transport.port
+            baudrate = board.transport.baudrate or baudrate
+    return resolved_board_id, port, baudrate
+
+
 class BoardService:
     """Application service responsible for board-level operations."""
 
@@ -192,31 +224,7 @@ class BoardService:
         from trt.protocol.serial_protocol_client import SerialProtocolClient
         from trt.transport.serial_transport import SerialTransport
 
-        try:
-            numeric_board_id = int(board_id, 0)
-        except ValueError:
-            if not board_id.isdigit():
-                raise ValueError(f"Serial TRT board id must be numeric, got {board_id!r}")
-            numeric_board_id = int(board_id)
-        resolved_board_id = str(numeric_board_id)
-        baudrate = 115200
-        if port is None:
-            saved_connection = load_serial_connections().get(resolved_board_id)
-            if saved_connection is not None:
-                port = saved_connection["port"]
-                baudrate = saved_connection["baudrate"]
-            else:
-                discovery = BoardDiscoveryService()
-                discovery.discover_serial()
-                board = discovery.repository.get_by_id(resolved_board_id)
-                if board is None or board.transport is None or board.transport.port is None:
-                    raise ValueError(
-                        f"Board {resolved_board_id} was not discovered. "
-                        "Run 'trt discover' or pass --port COMx."
-                    )
-                port = board.transport.port
-                baudrate = board.transport.baudrate or baudrate
-
+        resolved_board_id, port, baudrate = resolve_serial_connection(board_id, port)
         transport = SerialTransport(port=port, baudrate=baudrate)
         try:
             ping = transport.exchange_command(0x0001, resolved_board_id)

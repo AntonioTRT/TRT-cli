@@ -43,6 +43,7 @@ def show_help() -> None:
     top.add_row("trt build stm32 <program>", "Build an STM32 application (no flashing)")
     top.add_row("trt flash stm32 [program]", "Flash the latest (or named) STM32 build")
     top.add_row("trt list-programs stm32", "List available STM32 applications")
+    top.add_row("trt board <query> <id>", "version, build-id, name, type, revision, id, runtime, active-program, uptime, transport")
     top.add_row("trt stm32 test", "Test the full TRT v0.1 serial protocol")
     top.add_row("trt board <board> ...", "Operate on a specific board")
     top.add_row("trt lcd ...", "LCD display control")
