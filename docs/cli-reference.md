@@ -214,6 +214,49 @@ The install method is auto-detected at runtime.
 
 ---
 
+## trt listen
+
+Passively print every asynchronous message sent by TRT boards. Nothing is sent to the boards.
+
+```bash
+trt listen              # all serial ports, all boards
+trt board listen 101    # only board 101
+```
+
+Stop with Ctrl+C. `trt board listen <id>` needs a numeric board ID and ignores frames from other boards.
+
+```
+Board 101: HEARTBEAT
+Board 101: HEARTBEAT
+Board 101: HEARTBEAT
+```
+
+### Relationship with TRT-Core heartbeat
+
+Every TRT-Core board emits a HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`) about once per second. `listen` receives and prints it. Other event frames are shown as `EVENT 0x<id> payload=<hex>`. Heartbeat only shows that the runtime is alive; it does not replace discovery (`trt discover`, `trt board <id> info`, `trt board <id> capabilities`). See the TRT-Core `docs/event-system.md`.
+
+### When to use it
+
+- Firmware validation: the firmware is running.
+- Flash validation: the board boots after flashing.
+- Runtime validation: the TRT runtime loop is alive.
+- Communication validation: the transport path works.
+- Development diagnostics.
+
+### Typical workflow
+
+1. Flash the board.
+2. Run `trt listen`. A `HEARTBEAT` line about every second confirms the board is alive (the first one can take about a second, because opening the port resets Arduino-type boards).
+3. Run `trt discover` or `trt board <id> info` to check identity and version.
+
+### Notes
+
+- Close other programs using the serial port first; only one program can hold a port.
+- Exit code is 1 if no serial port exists or none can be opened.
+- The simulator does not emit heartbeats.
+
+---
+
 ## trt boards
 
 List all boards currently known to TRT.

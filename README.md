@@ -81,9 +81,13 @@ trt discover
 trt boards
 trt board info 101
 trt board capabilities 101
+trt listen
+trt board listen 101
 ```
 
 `trt discover` enumerates available serial ports, probes them with TRT protocol frames, and lists compatible boards.
+
+`trt listen` passively prints the messages boards send on their own. Every TRT-Core board emits a `HEARTBEAT` event about once per second, so after flashing, `Board 101: HEARTBEAT` lines confirm the firmware, transport and runtime are alive. It does not replace discovery. `trt board listen 101` shows only board 101. See [docs/cli-reference.md](docs/cli-reference.md#trt-listen).
 
 ### STM32 NUCLEO-L073RZ
 

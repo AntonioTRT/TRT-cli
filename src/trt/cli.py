@@ -34,6 +34,7 @@ from trt.commands.flash import app as flash_app
 from trt.commands.help import show_help
 from trt.commands.lcd import app as lcd_app
 from trt.commands.led import app as led_app
+from trt.commands.listen import run_listen
 from trt.commands.protocol import app as protocol_app
 from trt.commands.stm32 import app as stm32_app
 from trt.commands.update import run_update
@@ -96,6 +97,12 @@ def update(
 def boards() -> None:
     """Display all boards currently known to TRT."""
     show_boards()
+
+
+@app.command(help="Listen for messages (heartbeat, events) from all TRT boards")
+def listen() -> None:
+    """Passively print asynchronous messages from every TRT board. Ctrl+C to stop."""
+    run_listen()
 
 
 @app.command(help="Rescan for connected boards (USB)")

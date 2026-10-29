@@ -105,6 +105,15 @@ def board_capabilities(
     _render_capabilities(board_id, board)
 
 
+@board_app.command("listen", help="Listen for messages (heartbeat, events) from this board")
+def board_listen(
+    board_id: str = typer.Argument(..., help="Numeric board identifier, e.g. 101"),
+) -> None:
+    from trt.commands.listen import run_listen
+
+    run_listen(board_id)
+
+
 @board_app.command("modules", help="List loaded modules on the board")
 def board_modules(
     board_id: str = typer.Argument(..., help="Board identifier"),

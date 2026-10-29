@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added `trt listen` and `trt board listen <id>` to passively print asynchronous board messages.
+- Handles the TRT-Core HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`), printed as `Board <id>: HEARTBEAT`.
+- Request/response exchanges now skip event frames while waiting for a reply.
+
 ## 1.0.0 - 2026-09-08
 
 TRT-CLI 1.0.0 is the first hardware-validated release.

@@ -37,6 +37,7 @@ def show_help() -> None:
     top.add_row("trt version", "Display TRT CLI version")
     top.add_row("trt update", "Check for TRT CLI updates (--install to install)")
     top.add_row("trt discover", "Scan serial ports for TRT boards")
+    top.add_row("trt listen", "Print heartbeat/event messages from all boards")
     top.add_row("trt boards", "List boards found by serial discovery")
     top.add_row("trt board <command> <id>", "Query a discovered board (see below)")
     top.add_row("trt flash stm32", "Build and upload STM32 firmware")
@@ -65,6 +66,7 @@ def show_help() -> None:
         ("board info <id>",         "Board identity and firmware info"),
         ("board status <id>",       "Current board status"),
         ("board capabilities <id>", "List board capabilities"),
+        ("board listen <id>",       "Print heartbeat/event messages from one board"),
     ]
     for cmd, desc in rows:
         board.add_row(cmd, desc)

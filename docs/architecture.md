@@ -59,6 +59,7 @@ Files:
 - [src/trt/commands/discover.py](../src/trt/commands/discover.py)
 - [src/trt/commands/lcd.py](../src/trt/commands/lcd.py)
 - [src/trt/commands/led.py](../src/trt/commands/led.py)
+- [src/trt/commands/listen.py](../src/trt/commands/listen.py)
 
 Responsibilities:
 - parse command-line arguments
@@ -77,8 +78,10 @@ Files:
 - [src/trt/services/lcd_service.py](../src/trt/services/lcd_service.py)
 - [src/trt/services/led_service.py](../src/trt/services/led_service.py)
 - [src/trt/services/update_service.py](../src/trt/services/update_service.py)
+- [src/trt/services/listen_service.py](../src/trt/services/listen_service.py)
 
 Responsibilities:
+- passive monitoring of asynchronous board messages (`ListenService`)
 - board lookup and state coordination
 - capability enforcement
 - discovery orchestration
@@ -107,8 +110,10 @@ Files:
 - [src/trt/transport/base.py](../src/trt/transport/base.py)
 - [src/trt/transport/serial_transport.py](../src/trt/transport/serial_transport.py)
 - [src/trt/transport/mock_transport.py](../src/trt/transport/mock_transport.py)
+- [src/trt/transport/frame_reader.py](../src/trt/transport/frame_reader.py)
 
 Responsibilities:
+- `FrameReader` is a resynchronising TRT frame parser used to read unsolicited frames from a byte stream
 - send protocol requests over a concrete transport
 - isolate the protocol layer from runtime transport concerns
 - enumerate serial ports and exchange TRT frames over COM ports
@@ -142,6 +147,7 @@ The domain layer remains framework-independent and portable.
 - real `trt board info 101` transaction over COM4
 - mock transport retained as explicit test/support infrastructure
 - capability service
+- passive monitoring: `trt listen` and `trt board listen <id>` (heartbeat events)
 
 ### Planned for the future
 
@@ -176,6 +182,28 @@ Dependency direction rules now follow the intended architecture:
 - Domain models remain independent
 
 This is the key improvement that makes the project more maintainable and more migration-friendly.
+
+---
+
+## Asynchronous events and heartbeat
+
+TRT-Core boards emit a HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`) about once per second. It is a runtime presence indicator and does not replace discovery.
+
+Handling is passive and sits beside the request/response path:
+
+```text
+trt listen / trt board listen <id>
+    -> commands/listen.py            (arguments, output: "Board <id>: HEARTBEAT")
+        -> ListenService             (opens serial ports, one reader thread per port, board filter)
+            -> FrameReader           (resynchronising frame parser)
+                -> serial port
+```
+
+- `listen` never sends frames. It does not use `ProtocolClient`.
+- `SerialTransport.exchange_command` skips event frames while waiting for a reply, so heartbeats do not corrupt discovery, `board info` or `board capabilities`.
+- Event frames other than heartbeat are printed as `EVENT 0x<id> payload=<hex>`.
+
+See [cli-reference.md](cli-reference.md#trt-listen) for usage.
 
 ---
 

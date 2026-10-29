@@ -38,6 +38,8 @@ class SerialTransport(Transport):
     _HEADER_SIZE = 12
     _CRC_SIZE = 2
     _MAX_FRAME_SIZE = 256
+    _FLAG_EVENT = 0x02
+    _MAX_SKIPPED_EVENTS = 8
 
     _OPCODES: dict[ProtocolOperation, int] = {
         ProtocolOperation.GET_VERSION: 0x0002,
@@ -88,29 +90,49 @@ class SerialTransport(Transport):
         connection.reset_input_buffer()
         connection.write(frame)
         connection.flush()
-        response_frame = connection.read(self._HEADER_SIZE)
-        if len(response_frame) < self._HEADER_SIZE:
-            raise TimeoutError(f"No complete TRT response received from {self.port}")
-        if response_frame[:2] != self._SYNC:
-            raise ValueError(f"TRT response does not start with sync bytes on {self.port}")
-        if response_frame[2] != self._VERSION:
-            raise ValueError(f"Unsupported TRT response version {response_frame[2]} on {self.port}")
+        # Boards emit unsolicited event frames (heartbeat); skip them while waiting for the reply.
+        for _ in range(self._MAX_SKIPPED_EVENTS + 1):
+            raw_frame = self._read_raw_frame(connection)
+            if not raw_frame[3] & self._FLAG_EVENT:
+                break
+        else:
+            raise TimeoutError(f"No TRT response received from {self.port} (only event frames)")
 
-        payload_length = struct.unpack(">H", response_frame[10:12])[0]
-        if self._HEADER_SIZE + payload_length + self._CRC_SIZE > self._MAX_FRAME_SIZE:
-            raise ValueError(f"TRT response exceeds the {self._MAX_FRAME_SIZE}-byte frame limit")
-        payload = connection.read(payload_length)
-        crc = connection.read(self._CRC_SIZE)
-        if len(payload) != payload_length or len(crc) != self._CRC_SIZE:
-            raise TimeoutError(f"Incomplete TRT response received from {self.port}")
-
-        decoded = self._decode_frame(response_frame + payload + crc)
+        decoded = self._decode_frame(raw_frame)
         if decoded.sequence_id != sequence_id:
             raise ValueError(
                 f"TRT response sequence mismatch on {self.port}: "
                 f"expected {sequence_id}, received {decoded.sequence_id}"
             )
         return decoded
+
+    def _read_raw_frame(self, connection) -> bytes:
+        """Read one complete TRT frame, resynchronising on the sync word."""
+        previous = b""
+        for _ in range(self._MAX_FRAME_SIZE):
+            byte = connection.read(1)
+            if len(byte) < 1:
+                raise TimeoutError(f"No complete TRT response received from {self.port}")
+            if previous + byte == self._SYNC:
+                break
+            previous = byte
+        else:
+            raise ValueError(f"TRT response does not start with sync bytes on {self.port}")
+
+        header = self._SYNC + connection.read(self._HEADER_SIZE - 2)
+        if len(header) < self._HEADER_SIZE:
+            raise TimeoutError(f"No complete TRT response received from {self.port}")
+        if header[2] != self._VERSION:
+            raise ValueError(f"Unsupported TRT response version {header[2]} on {self.port}")
+
+        payload_length = struct.unpack(">H", header[10:12])[0]
+        if self._HEADER_SIZE + payload_length + self._CRC_SIZE > self._MAX_FRAME_SIZE:
+            raise ValueError(f"TRT response exceeds the {self._MAX_FRAME_SIZE}-byte frame limit")
+        payload = connection.read(payload_length)
+        crc = connection.read(self._CRC_SIZE)
+        if len(payload) != payload_length or len(crc) != self._CRC_SIZE:
+            raise TimeoutError(f"Incomplete TRT response received from {self.port}")
+        return header + payload + crc
 
     def is_available(self) -> bool:
         return serial is not None

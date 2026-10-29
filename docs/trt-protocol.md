@@ -521,7 +521,9 @@ $ trt board board1 adc read 3
 
 ---
 
-### 7.4 EVENT — Asynchronous Notification *(Future — V2+)*
+> **Implementation status:** the EVENT flag (`0x02`) and one event, HEARTBEAT (COMMAND `0x9001`, about once per second, empty payload), are implemented in TRT-Core and handled by `trt listen` (see [cli-reference.md](cli-reference.md#trt-listen)). Other events remain future work.
+
+### 7.4 EVENT — Asynchronous Notification *(HEARTBEAT implemented; other events future)*
 
 | Attribute | Value |
 |---|---|
