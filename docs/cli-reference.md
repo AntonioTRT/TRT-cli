@@ -15,13 +15,34 @@ trt --show-completion       Show completion script
 ## STM32 NUCLEO-L073RZ
 
 ```powershell
-trt flash stm32 [--port COM5] [--project-dir PATH]
+trt list-programs stm32 [--project-dir PATH]
+trt build stm32 <program> [--project-dir PATH]
+trt flash stm32 [program] [--project-dir PATH]
+trt flash stm32 --platformio [--port COM5] [--project-dir PATH]
 trt stm32 test [--port COM5] [--board-id 0x0002]
 trt board info 2 [--port COM5]
 ```
 
-`flash stm32` invokes `python -m platformio run -d <TRT-stm32> -t upload`;
-when no `--port` is supplied, ST-LINK/PlatformIO selects the upload port.
+`list-programs stm32` prints one application name per line, discovered from the
+files `Sources/programs/program_*.c` of the STM32CubeIDE project (sorted; read-only,
+it builds and flashes nothing). These are exactly the names `build stm32` and
+`flash stm32` accept. It exits with code 1 if no program is found.
+
+`build stm32 <program>` builds one application of the STM32CubeIDE project
+(`TRT-core/TRT-stm32/am modulation`) with TRT-Core included, in
+`build/<program>/` (CubeIDE's `Debug/` is not touched), via
+`cmake ... -DACTIVE_PROGRAM=PROGRAM_<NAME>` and `cmake --build`. It copies the
+`.elf` to `artifacts/<program>/<program>.elf` and records it in
+`artifacts/latest.json`. It never flashes. Requires `cmake` and
+`arm-none-eabi-gcc` on `PATH` (the STM32CubeIDE toolchain). Valid names are the
+files in `Sources/programs/program_*.c`; an unknown name lists them.
+
+`flash stm32` flashes an existing artifact and never builds: with no name the
+most recent build (`latest.json`), with a name that application's stored build,
+using `STM32_Programmer_CLI -c port=SWD -w <elf> -v -rst` (must be on `PATH`).
+If nothing is built it tells you to run `trt build stm32 <program>`.
+`flash stm32 --platformio` keeps the previous behaviour: it runs
+`python -m platformio run -d <TRT-stm32> -t upload` (`--port` applies only here).
 `stm32 test` scans serial ports unless one is specified and sends all six
 TRT v0.1 requests at 115200 baud, 8N1. It checks PING for ACK `0x8001`,
 the five data commands for response `0x8003`, and decodes INFO, STATUS, and

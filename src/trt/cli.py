@@ -30,7 +30,9 @@ import typer
 from trt.commands.board import board_app
 from trt.commands.boards import show_boards
 from trt.commands.discover import run_discover
+from trt.commands.build import app as build_app
 from trt.commands.flash import app as flash_app
+from trt.commands.programs import app as programs_app
 from trt.commands.help import show_help
 from trt.commands.lcd import app as lcd_app
 from trt.commands.led import app as led_app
@@ -51,7 +53,9 @@ app.add_typer(board_app,    name="board",    help="Operate on a specific board")
 app.add_typer(lcd_app,      name="lcd",      help="LCD display control")
 app.add_typer(led_app,      name="led",      help="LED control (WS2812 / NeoPixel)")
 app.add_typer(protocol_app, name="protocol", help="TRT Protocol information")
-app.add_typer(flash_app, name="flash", help="Build and upload board firmware")
+app.add_typer(build_app, name="build", help="Build board firmware without flashing")
+app.add_typer(flash_app, name="flash", help="Flash previously built board firmware")
+app.add_typer(programs_app, name="list-programs", help="List available board applications")
 app.add_typer(stm32_app, name="stm32", help="STM32 board diagnostics")
 
 

@@ -59,6 +59,12 @@ TRT-CLI is now versioned as `1.0.0` because the project is no longer mock-only:
 | Real serial transport | Implemented for discovery and board info |
 | Arduino Uno TRT-Core communication | Validated |
 | Mock operation support | Retained only as explicit test/support infrastructure |
+| Heartbeat listening (`trt listen`, `trt board <id> listen`) | Implemented |
+| STM32 application build (`trt build stm32 <program>`) | Implemented; needs `cmake` and `arm-none-eabi-gcc` |
+| STM32 flash of a stored build (`trt flash stm32 [program]`) | Implemented; needs `STM32_Programmer_CLI` |
+| STM32 application discovery (`trt list-programs stm32`) | Implemented |
+
+Cross-platform status (Arduino, ESP32, STM32) is documented in the TRT-core repository: `docs/platform-status.md`.
 
 ---
 
