@@ -77,7 +77,7 @@ def info() -> None:
     )
 
     console.print(
-        "  [dim]See [cyan]docs/future-protocol.md[/cyan] for full specification notes.[/dim]\n"
+        "  [dim]Implemented protocol: TRT V0.1, TRT-core docs/protocol-v0.1-wire-format.md.[/dim]\n"
     )
 
 
@@ -89,7 +89,7 @@ def version() -> None:
     protocol versions to verify compatibility.
     """
     console.print()
-    console.print(f"  [bold cyan]TRT Protocol[/bold cyan]")
+    console.print("  [bold cyan]TRT Protocol[/bold cyan]")
     console.print(f"  Version : [yellow]{_PROTOCOL_VERSION}[/yellow]")
-    console.print(f"  Status  : [dim]Planned - not yet implemented[/dim]")
+    console.print("  Status  : [dim]Planned - not yet implemented[/dim]")
     console.print()

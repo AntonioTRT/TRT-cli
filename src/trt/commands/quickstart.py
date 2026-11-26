@@ -5,6 +5,9 @@ from rich.table import Table
 
 console = Console()
 
+# The core workflow, printed identically by trt, trt --help and trt help.
+WORKFLOW = "discover -> boards -> info -> hwid -> update -> MATCH -> listen"
+
 QUICK_START = (
     ("trt discover", "Discover TRT boards"),
     ("trt boards", "Show discovered boards and their MATCH status"),
@@ -26,6 +29,7 @@ def show_quickstart() -> None:
         table.add_row(f"  {command}", description)
     console.print(table)
     console.print()
+    console.print(f"Workflow: {WORKFLOW}")
     console.print("[dim]<address> is the board address shown by trt boards (e.g. 201).[/dim]")
     console.print("More: [cyan]trt --help[/cyan] (all commands)  |  [cyan]trt help[/cyan] (concepts and full reference)")
     console.print()

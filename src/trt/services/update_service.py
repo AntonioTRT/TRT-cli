@@ -27,13 +27,11 @@ upgrade command.  For now all installation methods are scaffolded.
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
-from trt.version import get_version, get_version_info
+from trt.version import get_version
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -85,9 +83,9 @@ class UpdateCheckResult:
 
     status: UpdateStatus
     current_version: str
-    latest_version: Optional[str] = None
+    latest_version: str | None = None
     release_url: str = GITHUB_RELEASES_URL
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     @property
     def is_update_available(self) -> bool:
@@ -110,7 +108,7 @@ class UpdateInstallResult:
 
     success: bool
     message: str
-    new_version: Optional[str] = None
+    new_version: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +227,7 @@ def check_for_update() -> UpdateCheckResult:
     )
 
 
-def install_update(target_version: Optional[str] = None) -> UpdateInstallResult:
+def install_update(target_version: str | None = None) -> UpdateInstallResult:
     """Install the latest (or a specific) version of trt-cli.
 
     Phase 1 (current): returns a descriptive mock result explaining that
@@ -270,7 +268,6 @@ def install_update(target_version: Optional[str] = None) -> UpdateInstallResult:
     #   )
     # ------------------------------------------------------------------
 
-    method = detect_install_method()
     cmd = UpdateCheckResult(
         status=UpdateStatus.UNKNOWN,
         current_version=get_version(),

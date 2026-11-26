@@ -204,6 +204,12 @@ trt listen / trt board listen <address>
 
 See [cli-reference.md](cli-reference.md#trt-listen) for usage.
 
+Request/response synchronisation (`SerialTransport.exchange_command`): each attempt waits up to the
+serial timeout for the reply whose sequence ID matches the request, skipping event frames and stale
+replies. If the board sent frames but not the reply (request lost to a heartbeat collision), the
+request is sent again, up to `retries` (default 2) more times; a silent port fails after one attempt so
+discovery stays fast. Only read-only queries use this path, so repeating a request is safe.
+
 ---
 
 ## Capability-driven design
@@ -295,7 +301,7 @@ trt_docs/          Onboarding documentation (Spanish) and system deliverables
 ## Protocol Specification
 
 The implemented protocol is **TRT V0.1**, specified in TRT-core (`docs/protocol-v0.1-wire-format.md`,
-`docs/command-identifiers.md`). [docs/trt-protocol.md](trt-protocol.md) is an earlier, broader design
+`docs/command-identifiers.md`). [design/trt-protocol-v1.md](design/trt-protocol-v1.md) is an earlier, broader design
 document (V1); it shares the frame layout but its command set and CLI examples are not the implemented ones.
 
 Key facts:
@@ -303,6 +309,6 @@ Key facts:
 - Transport-agnostic: same frame over USB CDC, CAN FD, TCP/IP
 - Implemented transport: serial (USB CDC / ST-LINK virtual COM port), 115200 baud
 - CRC16 field present but sent as 0x0000 and not validated (V0.1)
-- `future-protocol.md` is superseded by `trt-protocol.md` for design decisions
+- `archive/future-protocol.md` is a superseded sketch of an earlier frame format
 
-See [docs/vision.md](vision.md) for the full roadmap.
+See [design/vision.md](design/vision.md) for the long-term direction.

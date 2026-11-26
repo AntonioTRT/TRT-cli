@@ -36,7 +36,7 @@ NUCLEO-L073RZ. Open limitations are listed under [Status](#status).
 | `typer`, `rich`, `pyserial` | Everything | Installed automatically by `pip install -e .` |
 | A TRT board on USB/serial | Talking to hardware | Any board running TRT-Core (STM32 NUCLEO-L073RZ, Arduino Uno, ESP32) |
 | [TRT-core](https://github.com/AntonioTRT/TRT-core) repository | `trt list-modes`, `trt build`, `trt flash`, `trt board update` | Clone it **next to** TRT-CLI (see below) |
-| STM32CubeIDE (provides `cmake`, `ninja`, `arm-none-eabi-gcc`, `STM32_Programmer_CLI`) | Building and flashing STM32 modes | Found automatically under `C:\ST\STM32CubeIDE_*`, or put the tools on `PATH` |
+| STM32CubeIDE (provides `cmake`, `ninja`, `arm-none-eabi-gcc`, `STM32_Programmer_CLI`) | Building and flashing STM32 modes | Found automatically in its default install folder (`C:\ST`, `/opt/st`, `~/st`, `/Applications`), or put the tools on `PATH` |
 | ST-LINK probe (on-board on NUCLEO boards) | Flashing STM32 | Same USB cable as the serial port on a NUCLEO |
 | PlatformIO Core | Only `trt flash stm32 --platformio` (legacy project) | `python -m pip install platformio` |
 
@@ -207,7 +207,7 @@ address 2) and needs PlatformIO. `trt board update` supports STM32 boards only f
 | `'trt' is not recognized` | The Python `Scripts` folder is not on `PATH`. Activate the virtual environment, or use `python -m trt`. |
 | `Found 0 board(s)` | Board not connected, or its port is open in another program (serial monitor, `trt listen` in another window). Close it and run `trt discover` again. Check the COM port in Device Manager. |
 | `could not open port 'COMx'` / port busy | Only one program can use a serial port. Stop `trt listen` (Ctrl+C) and close serial monitors. |
-| `No TRT response received ... (only event frames)` | The board sent heartbeats but no reply. Once: a request collided with a heartbeat and was dropped; run the command again. Every time: the board is not receiving; reset it, and if it persists reflash it (`trt board update`). |
+| `No TRT response received ... after 3 attempts (only event frames)` | The board sends heartbeats but does not answer. (A request lost to a heartbeat collision is resent automatically; this message means all attempts failed.) The board is not receiving: reset it, and if it persists reflash it (`trt board update`). |
 | `NO HWID` / `update` exits with code 2 | The firmware predates HWID support: do the bootstrap above once. |
 | `NO MODE` | The firmware reports no `mode_<ID>_*` name (older image, Arduino/ESP32 sketch). On STM32, `trt board update` installs the right mode. |
 | `No mode for HWID n` | No mode exists for that daughter-board code (e.g. `0001`, reserved codes, `1111` = fault). Check the wiring / daughter board. |
@@ -215,6 +215,8 @@ address 2) and needs PlatformIO. `trt board update` supports STM32 boards only f
 | `Could not locate the STM32CubeIDE project` | Clone TRT-core next to TRT-CLI, run from inside TRT-core, or pass `--project-dir`. |
 | `trt stm32 test`: `Response board id is 0x00C9; expected 0x0002` | The default address is the legacy `0x0002`; current firmware answers as 201: add `--board-id 201`. |
 | `unrecognized arguments: --cov=...` when running `pytest` | Install the dev extras: `python -m pip install -e ".[dev]"`. |
+| Linux: `Permission denied: '/dev/ttyACM0'` | Add your user to the serial group and log in again: `sudo usermod -aG dialout $USER` (`uucp` on Arch). |
+| `trt help \| more` stops early | Expected: `trt` exits quietly when the reader closes the pipe. |
 | PlatformIO certificate errors on a corporate network | `python -m pip install truststore` (used by the TRT-core upload tooling). |
 
 Discovered boards are cached in `%USERPROFILE%\.trt\boards.json` (address, port, baud rate); the
@@ -226,14 +228,18 @@ board commands.
 ## Development
 
 ```powershell
-python -m pip install -e ".[dev]"     # pytest, pytest-cov, mypy, ruff, black, isort
-pytest                                 # runs with coverage (configured in pyproject.toml)
-ruff check src tests
-mypy src
+python -m pip install -e ".[dev]"     # pytest, pytest-cov, mypy (+ types-pyserial), ruff, black, isort
+pytest                                 # all tests that need no hardware, with coverage
+pytest -m hardware                     # tests against a real board (address 101 by default)
+$env:TRT_TEST_BOARD = "201"; pytest -m hardware    # another board address (PowerShell)
+ruff check src tests                   # lint: must pass
+mypy src                               # type check: must pass
 ```
 
-5 tests in `tests/test_cli.py` need a real Arduino Uno with TRT-Core at address 101; without it they
-fail and the other 130 pass. To add a command, see [docs/adding-commands.md](docs/adding-commands.md).
+A plain `pytest` never opens a serial port: tests marked `hardware` are deselected, and every other
+test runs with no serial ports and a temporary board cache (`tests/conftest.py`). CI
+(`.github/workflows/ci.yml`) runs lint, type check, tests and a wheel build on Windows, Linux and
+macOS. To add a command, see [docs/adding-commands.md](docs/adding-commands.md).
 
 Code layout (dependencies point downwards):
 
@@ -262,6 +268,8 @@ Known limitations:
 - `trt lcd`, `trt led`, `trt protocol` and the board peripheral commands (`gpio`, `pwm`, `adc`, `dac`,
   `i2c`, `spi`, `debug`, ...) are simulated and hidden from the help screens.
 - `trt update` (self-update) only reports the installed version for now.
+- Hardware runs are on Windows; Linux and macOS are covered by the CI test suite but not yet by a
+  run against a real board.
 - Milestone reservations: TRT-core `docs/release-1.0-readiness.md`.
 
 ---
@@ -274,11 +282,12 @@ Known limitations:
 | [QUICKSTART.md](QUICKSTART.md) | Step-by-step first run on Windows (Spanish) |
 | [docs/adding-commands.md](docs/adding-commands.md) | How to add a `trt` command |
 | [docs/architecture.md](docs/architecture.md) | Layered architecture and dependency flow |
-| [docs/vision.md](docs/vision.md) | Mission, goals, platform overview |
+| [docs/README.md](docs/README.md) | Documentation index: current behaviour, future design, historical notes |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
 | TRT-core `docs/modes.md`, `docs/hwid-and-firmware-update.md` | Modes, HWID and the update workflow (firmware side) |
 | TRT-core `docs/protocol-v0.1-wire-format.md`, `docs/command-identifiers.md` | The implemented TRT protocol |
-| [docs/trt-protocol.md](docs/trt-protocol.md), [docs/future-protocol.md](docs/future-protocol.md) | Earlier protocol **design** documents (not the implemented protocol) |
+| [docs/design/](docs/design/) | **Future** architecture: vision and the V1 protocol design (not implemented) |
+| [docs/archive/](docs/archive/) | **Historical** design notes, superseded |
 
 ## License
 

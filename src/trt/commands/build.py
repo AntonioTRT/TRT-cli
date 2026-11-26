@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -22,7 +22,16 @@ MODES_SUBDIR = Path("Sources") / "modes"
 ARTIFACTS_SUBDIR = Path("artifacts")
 LATEST_MANIFEST = "latest.json"
 # Where STM32CubeIDE bundles its toolchain, searched when a tool is not on PATH.
-CUBEIDE_ROOTS = (Path("C:/ST"), Path("C:/Program Files/STMicroelectronics"))
+# Where STM32CubeIDE bundles its toolchain: (install root, glob of the plugin tool folders).
+# Windows: C:/ST/STM32CubeIDE_2.2.0/STM32CubeIDE/plugins/...; Linux: /opt/st/stm32cubeide_2.2.0/plugins/...;
+# macOS: /Applications/STM32CubeIDE.app/Contents/Eclipse/plugins/...
+CUBEIDE_LOCATIONS: tuple[tuple[Path, str], ...] = (
+    (Path("C:/ST"), "STM32CubeIDE*/STM32CubeIDE/plugins/*/tools/bin"),
+    (Path("C:/Program Files/STMicroelectronics"), "STM32CubeIDE*/STM32CubeIDE/plugins/*/tools/bin"),
+    (Path("/opt/st"), "stm32cubeide*/plugins/*/tools/bin"),
+    (Path.home() / "st", "stm32cubeide*/plugins/*/tools/bin"),
+    (Path("/Applications"), "STM32CubeIDE.app/Contents/Eclipse/plugins/*/tools/bin"),
+)
 
 
 def list_modes(cube_dir: Path) -> list[str]:
@@ -48,9 +57,9 @@ def mode_for_hwid(cube_dir: Path, hwid: int) -> str | None:
 def cubeide_tool_dirs() -> list[Path]:
     """tools/bin directories of the STM32CubeIDE plugins (toolchain, CMake, Ninja, CubeProgrammer)."""
     dirs: list[Path] = []
-    for root in CUBEIDE_ROOTS:
+    for root, pattern in CUBEIDE_LOCATIONS:
         if root.is_dir():
-            dirs.extend(sorted(root.glob("STM32CubeIDE*/STM32CubeIDE/plugins/*/tools/bin"), reverse=True))
+            dirs.extend(sorted(root.glob(pattern), reverse=True))
     return dirs
 
 
@@ -159,7 +168,7 @@ def build_stm32_mode(cube_dir: Path, program: str) -> Path:
     manifest = {
         "mode": program,
         "elf": str(stored),
-        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     (cube_dir / ARTIFACTS_SUBDIR / LATEST_MANIFEST).write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"

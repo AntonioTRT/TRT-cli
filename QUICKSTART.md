@@ -125,7 +125,7 @@ Más ayuda en el propio CLI: `trt` (guía rápida), `trt --help` (todos los coma
 |---|---|
 | `Found 0 board(s)` | Comprueba el cable y el puerto COM (*Administrador de dispositivos → Puertos*). Cierra monitores serie y cualquier `trt listen`. |
 | `could not open port` | Otro programa usa el puerto; ciérralo. |
-| `only event frames` una vez | Repite el comando. Si pasa siempre, reinicia la placa o actualízala. |
+| `... after 3 attempts (only event frames)` | La placa envía heartbeats pero no responde (los reintentos son automáticos). Reiníciala o actualízala. |
 | `Missing build tools` / `STM32_Programmer_CLI not found` | Instala STM32CubeIDE en `C:\ST`. |
 | `Could not locate the STM32CubeIDE project` | Clona TRT-core junto a TRT-cli o usa `--project-dir`. |
 | `trt stm32 test` falla con `expected 0x0002` | Usa `trt stm32 test --board-id 201`. |
@@ -145,8 +145,8 @@ python -m pip uninstall trt-cli
 
 ```powershell
 python -m pip install -e ".[dev]"
-pytest
+pytest                    # pruebas sin hardware (no abre puertos serie)
+pytest -m hardware        # pruebas con una placa real (dirección 101 por defecto)
 ```
 
-5 pruebas de `tests/test_cli.py` necesitan un Arduino Uno con TRT-Core en la dirección 101; sin él
-fallan y el resto (130) pasan. Para añadir comandos: [docs/adding-commands.md](docs/adding-commands.md).
+Para probar con otra placa: `$env:TRT_TEST_BOARD = "201"; pytest -m hardware`. Para añadir comandos: [docs/adding-commands.md](docs/adding-commands.md).

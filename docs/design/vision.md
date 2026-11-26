@@ -1,5 +1,9 @@
 # TRT Vision
 
+> **Future direction.** Mission and long-term goals. What exists today is in the
+> [README](../../README.md) and [cli-reference.md](../cli-reference.md).
+
+
 ## Mission
 
 TRT provides a unified command surface for embedded hardware control. The project exists to make hardware interaction feel as ordinary as using developer tools such as `git`, `docker`, or `kubectl`.

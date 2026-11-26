@@ -27,8 +27,8 @@ from trt.protocol.protocol_client import ProtocolClient
 from trt.protocol.serial_protocol_client import SerialProtocolClient
 from trt.protocol.v01 import decode_info_payload
 from trt.repositories.board_cache import SerialConnection, save_serial_connections
-from trt.services.board_summary import META_FAMILY, mode_metadata, read_mode_state
 from trt.repositories.board_repository import BoardRepository
+from trt.services.board_summary import META_FAMILY, mode_metadata, read_mode_state
 from trt.transport.serial_transport import SerialTransport
 
 

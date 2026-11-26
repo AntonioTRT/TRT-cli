@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich.console import Console
@@ -15,6 +15,9 @@ from trt.core.models import Board
 from trt.repositories.board_repository import BoardRepository
 from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.board_service import BoardActionResult, BoardService, RealBoardInfoResult
+
+if TYPE_CHECKING:
+    from trt.services.board_update_service import UpdatePlan
 
 console = Console()
 
@@ -268,7 +271,7 @@ def board_update(
     console.print(f"  [bold green]Updated and verified:[/bold green] {plan.required} is active.\n")
 
 
-def _print_update_plan(plan) -> None:
+def _print_update_plan(plan: UpdatePlan) -> None:
     from trt.commands.board_view import hwid_pair, match_text
     from trt.services.board_summary import BoardSummary
 

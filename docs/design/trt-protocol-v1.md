@@ -3,7 +3,7 @@
 > **Design document, not the implemented protocol.** TRT-CLI and TRT-Core implement **TRT V0.1**
 > (TRT-core `docs/protocol-v0.1-wire-format.md`, `docs/command-identifiers.md`). This V1 design shares
 > the frame layout; its command set, debug flags and CLI examples (`trt board board1 ...`) are not
-> implemented. Current CLI usage: [cli-reference.md](cli-reference.md).
+> implemented. Current CLI usage: [cli-reference.md](../cli-reference.md).
 
 
 > **Status: Architecture Definition — No implementation yet.**
@@ -527,7 +527,7 @@ $ trt board board1 adc read 3
 
 ---
 
-> **Implementation status:** the EVENT flag (`0x02`) and one event, HEARTBEAT (COMMAND `0x9001`, about once per second, empty payload), are implemented in TRT-Core and handled by `trt listen` (see [cli-reference.md](cli-reference.md#trt-listen)). Other events remain future work.
+> **Implementation status:** the EVENT flag (`0x02`) and one event, HEARTBEAT (COMMAND `0x9001`, about once per second, empty payload), are implemented in TRT-Core and handled by `trt listen` (see [cli-reference.md](../cli-reference.md#trt-listen)). Other events remain future work.
 
 ### 7.4 EVENT — Asynchronous Notification *(HEARTBEAT implemented; other events future)*
 
@@ -1153,9 +1153,9 @@ This section records decisions that were made and the rationale behind them.
 
 | Document | Contents |
 |---|---|
-| [architecture.md](architecture.md) | Overall trt-cli system architecture |
-| [cli-reference.md](cli-reference.md) | Full CLI command reference |
-| [future-protocol.md](future-protocol.md) | Earlier protocol sketch (superseded by this document for design decisions) |
+| [architecture.md](../architecture.md) | Overall trt-cli system architecture |
+| [cli-reference.md](../cli-reference.md) | Full CLI command reference |
+| [future-protocol.md](../archive/future-protocol.md) | Earlier protocol sketch (superseded by this document for design decisions) |
 | `docs/trt-commands.md` *(planned)* | Complete command opcode table and payload formats |
 
 ---

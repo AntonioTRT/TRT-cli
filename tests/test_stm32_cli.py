@@ -280,7 +280,7 @@ def _fake_toolchain(monkeypatch: pytest.MonkeyPatch, tools: set[str]) -> list[li
     monkeypatch.setattr(build.subprocess, "run", fake_run)
     monkeypatch.setattr(flash.subprocess, "run", fake_run)
     monkeypatch.setattr(build.shutil, "which", lambda tool: tool if tool in tools else None)
-    monkeypatch.setattr(build, "cubeide_tool_dirs", lambda: [])
+    monkeypatch.setattr(build, "cubeide_tool_dirs", list)
     monkeypatch.setattr(flash.shutil, "which", lambda tool: tool if tool in tools else None)
     return called
 

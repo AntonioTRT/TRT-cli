@@ -7,7 +7,7 @@ Three levels of help, from short to complete:
     trt --help   Commands grouped by purpose, with descriptions (Typer, rich_help_panel)
     trt help     Full reference: concepts, MATCH/MISMATCH, workflow, heartbeat, commands (help.py)
 
-User workflow:  discover -> boards -> board info -> board hwid -> board update -> MATCH -> listen
+User workflow:  discover -> boards -> info -> hwid -> update -> MATCH -> listen (quickstart.WORKFLOW)
 
 Hidden from the help screens but still callable (they do not talk to hardware):
     trt lcd ..., trt led ...         simulated peripherals (mock)
@@ -23,6 +23,7 @@ from typer.core import TyperGroup
 from trt.commands.board import board_app
 from trt.commands.boards import show_boards
 from trt.commands.build import app as build_app
+from trt.commands.console_io import discard_stdout, stdout_closed
 from trt.commands.discover import run_discover
 from trt.commands.flash import app as flash_app
 from trt.commands.help import show_help
@@ -31,7 +32,7 @@ from trt.commands.led import app as led_app
 from trt.commands.listen import run_listen
 from trt.commands.modes import app as modes_app
 from trt.commands.protocol import app as protocol_app
-from trt.commands.quickstart import show_quickstart
+from trt.commands.quickstart import WORKFLOW, show_quickstart
 from trt.commands.stm32 import app as stm32_app
 from trt.commands.update import run_update
 from trt.commands.version import show_version
@@ -49,7 +50,7 @@ _EPILOG = (
     "  [cyan]trt board hwid ADDRESS[/cyan]            HWID of the connected daughter board\n"
     "  [cyan]trt board mode ADDRESS[/cyan]            Mode installed in the firmware\n"
     "  [cyan]trt board update ADDRESS[/cyan]          Install the mode that matches the HWID\n\n"
-    "[bold]Workflow[/bold]  discover -> boards -> board info -> board hwid -> board update -> MATCH -> listen\n\n"
+    f"[bold]Workflow[/bold]  {WORKFLOW}\n\n"
     "Run [cyan]trt help[/cyan] for concepts (address, Board ID, HWID, modes) and the full reference."
 )
 
@@ -75,6 +76,7 @@ app = typer.Typer(
     invoke_without_command=True,
     no_args_is_help=False,
     rich_markup_mode="rich",
+    pretty_exceptions_show_locals=False,
 )
 
 
@@ -167,7 +169,15 @@ def main() -> None:
         from trt.commands.dev import run_dev
 
         raise SystemExit(run_dev(sys.argv[2:]))
-    app()
+    try:
+        app()
+    except OSError as error:
+        # `trt help | head`: the reader closed the pipe. POSIX raises BrokenPipeError, Windows
+        # OSError(EINVAL). Exit quietly in that case only; any other OSError is a real error.
+        if not (isinstance(error, BrokenPipeError) or stdout_closed()):
+            raise
+        discard_stdout()  # avoid a second error when Python flushes stdout at exit
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

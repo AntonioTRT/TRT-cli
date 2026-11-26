@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 import trt.transport.serial_transport as serial_transport_module
 from trt.cli import app
-from trt.core.modes import HwidMatch, mode_id, format_hwid, hwid_match
+from trt.core.modes import HwidMatch, format_hwid, hwid_match, mode_id
 from trt.repositories import board_cache
 from trt.services import board_discovery_service
 from trt.services.board_summary import BoardSummary

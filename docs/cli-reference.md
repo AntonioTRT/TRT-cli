@@ -246,9 +246,12 @@ Board 201: HEARTBEAT
 Every TRT-Core board sends HEARTBEAT (event `0x9001`, FLAGS `0x02`) about once per second. It confirms
 that the firmware and TRT-Core are running and that the board -> PC link works; use it after flashing
 or rewiring. It does **not** prove that the board receives commands: heartbeats with failing commands
-mean the board is not receiving (reset it, or reflash with `trt board update`). A single
-`No TRT response received ... (only event frames)` can happen when a request collides with a heartbeat;
-repeat the command. Other events print as
+mean the board is not receiving (reset it, or reflash with `trt board update`).
+
+Every board command handles heartbeats on the same line automatically: event frames and late replies
+to earlier requests are skipped, and a request lost to a heartbeat collision is sent again (up to two
+more times). `No TRT response received ... after 3 attempts (only event frames)` therefore means the
+board is alive but not answering. Other events print as
 `EVENT 0x<id> payload=<hex>`. Stop with Ctrl+C before running other commands: a serial port can be open
 in one program only.
 
@@ -261,8 +264,9 @@ These commands use the STM32CubeIDE project in the TRT-core repository
 command runs inside TRT-core; otherwise pass `--project-dir PATH` (the TRT-stm32 folder or the project).
 
 Tools: `cmake`, `arm-none-eabi-gcc` (and `ninja` if present) for building, `STM32_Programmer_CLI` for
-flashing. When they are not on `PATH`, the CLI uses the copies bundled with STM32CubeIDE under
-`C:\ST\STM32CubeIDE_*`.
+flashing. When they are not on `PATH`, the CLI uses the copies bundled with STM32CubeIDE in its default
+install folder: `C:\ST\STM32CubeIDE_*` (Windows), `/opt/st/stm32cubeide_*` or `~/st/stm32cubeide_*`
+(Linux), `/Applications/STM32CubeIDE.app` (macOS).
 
 ### trt list-modes stm32
 

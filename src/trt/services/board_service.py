@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from trt.core.models import Board
+
+if TYPE_CHECKING:
+    from trt.services.board_summary import BoardSummary
 from trt.protocol.models import (
     AdcListRequest,
     AdcReadRequest,
@@ -68,7 +71,7 @@ class RealBoardInfoResult:
     hwid: int | None = None  # HWID query; None when the firmware does not report one
     active_mode: str | None = None  # ACTIVE_MODE; None when none is declared
 
-    def summary(self) -> "BoardSummary":
+    def summary(self) -> BoardSummary:
         from trt.services.board_summary import BoardSummary
 
         return BoardSummary(
@@ -92,7 +95,7 @@ def resolve_serial_connection(board_id: str, port: str | None = None) -> tuple[s
         numeric_board_id = int(board_id, 0)
     except ValueError:
         if not board_id.isdigit():
-            raise ValueError(f"Serial TRT board id must be numeric, got {board_id!r}")
+            raise ValueError(f"Board address must be numeric (e.g. 201), got {board_id!r}") from None
         numeric_board_id = int(board_id)
     resolved_board_id = str(numeric_board_id)
     baudrate = 115200

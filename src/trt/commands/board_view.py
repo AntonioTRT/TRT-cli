@@ -100,8 +100,10 @@ def summary_rows(summary: BoardSummary) -> list[tuple[str, str]]:
         ("Mode", summary.active_mode or "[dim]none declared[/dim]"),
         (
             "HWID",
-            f"{hwid_pair(summary)}  [dim](read {_hwid_decimal(summary.hwid_read)}"
-            f" / expected {_hwid_decimal(summary.hwid_expected)})[/dim]",
+            (
+                f"{hwid_pair(summary)}  [dim](read {_hwid_decimal(summary.hwid_read)}"
+                f" / expected {_hwid_decimal(summary.hwid_expected)})[/dim]"
+            ),
         ),
         ("Status", f"{match_text(summary)}  [dim]{_MATCH_HINT[summary.match]}[/dim]"),
     ]

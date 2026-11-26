@@ -233,7 +233,7 @@ command with `SerialTransport.exchange_command()`.
    opcode to `SerialTransport._OPCODES` in
    [transport/serial_transport.py](../src/trt/transport/serial_transport.py)
    and handle the response in its decode logic. The firmware must implement the
-   same opcode. See [trt-protocol.md](trt-protocol.md).
+   same opcode. The implemented protocol is TRT V0.1 (TRT-core `docs/command-identifiers.md`).
 
 ---
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
+from typing import Any
 
 from trt.transport.frame_reader import EVENT_HEARTBEAT, FrameReader, ReceivedFrame
 from trt.transport.serial_transport import SerialTransport, serial
@@ -72,7 +73,13 @@ class ListenService:
         return len(opened)
 
     @staticmethod
-    def _read_loop(connection, on_frame, stop, board_id, on_error) -> None:
+    def _read_loop(
+        connection: Any,
+        on_frame: Callable[[str, ReceivedFrame], None],
+        stop: threading.Event,
+        board_id: int | None,
+        on_error: Callable[[str, Exception], None] | None,
+    ) -> None:
         reader = FrameReader()
         while not stop.is_set():
             try:

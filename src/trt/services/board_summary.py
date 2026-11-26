@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trt.core.modes import HwidMatch, mode_id, hwid_match
 from trt.core.models import Board
+from trt.core.modes import HwidMatch, hwid_match, mode_id
 from trt.transport.serial_transport import SerialTransport
 
 CMD_ACTIVE_MODE = 0x000A

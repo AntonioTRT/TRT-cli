@@ -8,6 +8,8 @@ from rich.markup import escape
 from rich.padding import Padding
 from rich.table import Table
 
+from trt.commands.quickstart import WORKFLOW
+
 console = Console()
 
 _INDENT = (0, 0, 0, 2)
@@ -38,7 +40,7 @@ def show_help() -> None:
     _text(
         "Discover TRT boards, check that the mode matches the connected hardware,\n"
         "update it, and monitor the board. Workflow:\n"
-        "[bold]discover -> boards -> info -> hwid -> update -> MATCH -> listen[/bold]"
+        f"[bold]{WORKFLOW}[/bold]"
     )
 
     _section("Concepts")
