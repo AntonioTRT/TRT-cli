@@ -89,10 +89,12 @@ class BoardDiscoveryService:
                 version = client.send(GetVersionRequest(board_id=info.board_id or candidate_board_id))
                 capabilities = client.send(GetCapabilitiesRequest(board_id=info.board_id or candidate_board_id))
                 build = client.send(BuildIdRequest(board_id=info.board_id or candidate_board_id))
-                board_type = str(info.to_payload().get("board_type", "Unknown"))
+                # BoardInfoRequest is opcode 0x0003 (BOARD_VERSION), which answers the revision only.
+                revision = str(info.to_payload().get("board_type", "")) or "-"
             except (OSError, RuntimeError, TimeoutError, ValueError):
                 transport.close()
                 continue
+            board_type = self._read_info_name(transport, info.board_id or candidate_board_id)
             transport.close()
 
             if not isinstance(capabilities, GetCapabilitiesResponse):
@@ -102,7 +104,7 @@ class BoardDiscoveryService:
                 DiscoveredBoardPayload(
                     board_id=info.board_id or candidate_board_id,
                     board_type=board_type,
-                    revision="-",
+                    revision=revision,
                     firmware=str(version.to_payload().get("version", "")),
                     serial=str(build.to_payload().get("build_id", "")),
                     status=BoardStatus.READY.value,
@@ -113,6 +115,17 @@ class BoardDiscoveryService:
             )
 
         return None
+
+    @staticmethod
+    def _read_info_name(transport: SerialTransport, board_id: str) -> str:
+        """Board name from INFO (0x0004) field 0x01; "Unknown" if the firmware does not answer INFO."""
+        try:
+            frame = transport.exchange_command(0x0004, board_id)
+            if frame.command != 0x8003:
+                return "Unknown"
+            return decode_info_payload(frame.payload).get("board_type") or "Unknown"
+        except (OSError, RuntimeError, TimeoutError, ValueError):
+            return "Unknown"
 
     def _probe_stm32(self, transport: SerialTransport, board_id: str, port: str) -> Board | None:
         try:
