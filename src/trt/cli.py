@@ -29,7 +29,7 @@ from trt.commands.help import show_help
 from trt.commands.lcd import app as lcd_app
 from trt.commands.led import app as led_app
 from trt.commands.listen import run_listen
-from trt.commands.programs import app as programs_app
+from trt.commands.modes import app as modes_app
 from trt.commands.protocol import app as protocol_app
 from trt.commands.quickstart import show_quickstart
 from trt.commands.stm32 import app as stm32_app
@@ -45,18 +45,18 @@ INFORMATION = "Information"
 
 _EPILOG = (
     "[bold]Board management[/bold] (ADDRESS = board address shown by [cyan]trt boards[/cyan], e.g. 201)\n"
-    "  [cyan]trt board info ADDRESS[/cyan]            Board status: application, HWID read / expected, MATCH\n"
+    "  [cyan]trt board info ADDRESS[/cyan]            Board status: mode, HWID read / expected, MATCH\n"
     "  [cyan]trt board hwid ADDRESS[/cyan]            HWID of the connected daughter board\n"
-    "  [cyan]trt board active-program ADDRESS[/cyan]  Application installed in the firmware\n"
-    "  [cyan]trt board update ADDRESS[/cyan]          Install the application that matches the HWID\n\n"
+    "  [cyan]trt board mode ADDRESS[/cyan]            Mode installed in the firmware\n"
+    "  [cyan]trt board update ADDRESS[/cyan]          Install the mode that matches the HWID\n\n"
     "[bold]Workflow[/bold]  discover -> boards -> board info -> board hwid -> board update -> MATCH -> listen\n\n"
-    "Run [cyan]trt help[/cyan] for concepts (address, HWID, Board ID, application) and the full reference."
+    "Run [cyan]trt help[/cyan] for concepts (address, Board ID, HWID, modes) and the full reference."
 )
 
 # `trt --help` lists panels in the order their commands appear; keep the workflow order.
 _COMMAND_ORDER = (
     "discover", "boards", "board", "listen",
-    "list-programs", "build", "flash", "stm32",
+    "list-modes", "build", "flash", "stm32",
     "help", "version", "update",
 )
 
@@ -69,7 +69,7 @@ class _WorkflowOrderGroup(TyperGroup):
 
 app = typer.Typer(
     cls=_WorkflowOrderGroup,
-    help="TRT - Tool Runtime Terminal. Discover TRT boards, check that their firmware matches the "
+    help="TRT - Tool Runtime Terminal. Discover TRT boards, check that their mode matches the "
     "connected hardware (HWID), update it, and monitor them.",
     epilog=_EPILOG,
     invoke_without_command=True,
@@ -88,11 +88,13 @@ def main_callback(ctx: typer.Context) -> None:
 # Command groups
 app.add_typer(
     board_app, name="board", rich_help_panel=MANAGEMENT,
-    help="Inspect and update one board: info, hwid, active-program, update, listen, queries",
+    help="Inspect and update one board: info, hwid, mode, update, listen, queries",
 )
-app.add_typer(build_app, name="build", rich_help_panel=DEVELOPMENT, help="Build an application firmware (no flashing)")
+app.add_typer(build_app, name="build", rich_help_panel=DEVELOPMENT, help="Build a mode firmware image (no flashing)")
 app.add_typer(flash_app, name="flash", rich_help_panel=DEVELOPMENT, help="Flash a previously built firmware")
-app.add_typer(programs_app, name="list-programs", rich_help_panel=DEVELOPMENT, help="List the applications that can be built")
+app.add_typer(modes_app, name="list-modes", rich_help_panel=DEVELOPMENT, help="List the modes that can be built")
+# Former name, kept as a hidden alias.
+app.add_typer(modes_app, name="list-programs", hidden=True, help="Alias of list-modes")
 app.add_typer(stm32_app, name="stm32", rich_help_panel=DEVELOPMENT, help="STM32 protocol self-test (trt stm32 test)")
 # Simulated / placeholder groups: callable, but kept out of every help screen.
 app.add_typer(lcd_app, name="lcd", hidden=True, help="LCD display control (simulated, no hardware)")
@@ -110,7 +112,7 @@ def discover() -> None:
     run_discover()
 
 
-@app.command(rich_help_panel=DISCOVERY, help="Show discovered boards: firmware, application, HWID and MATCH status")
+@app.command(rich_help_panel=DISCOVERY, help="Show discovered boards: firmware, mode, HWID and MATCH status")
 def boards() -> None:
     """Display all boards currently known to TRT."""
     show_boards()

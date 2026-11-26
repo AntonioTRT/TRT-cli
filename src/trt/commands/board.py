@@ -37,7 +37,7 @@ MONITOR_PANEL = "Monitoring"
 
 @board_app.command(
     "info", rich_help_panel=STATUS_PANEL,
-    help="Board status (application, HWID read / expected, MATCH) and details",
+    help="Board status (mode, HWID read / expected, MATCH) and details",
 )
 def board_info(
     board_id: str = typer.Argument(..., metavar="ADDRESS", help="Board address shown by trt boards, e.g. 201"),
@@ -138,15 +138,15 @@ _QUERY_HELP = {
     "build-id": "Show the firmware build identifier",
     "runtime": "Show the TRT-Core runtime state",
     "hwid": "HWID of the connected daughter board (read from its ID pins)",
-    "active-program": "Application installed in the firmware (app_<HWID>_<name>)",
+    "mode": "Mode installed in the firmware (mode_<ID>_<name>)",
     "uptime": "Show the board uptime since boot",
     "transport": "Show the serial port and baud rate used to reach the board",
 }
 # Shown with info/update: the two values that decide MATCH / MISMATCH.
-_STATUS_QUERIES = ("hwid", "active-program")
+_STATUS_QUERIES = ("hwid", "mode")
 
 
-def _register_query(item: str, help_text: str) -> None:
+def _register_query(item: str, help_text: str, name: str | None = None, hidden: bool = False) -> None:
     def command(
         board_id: str = typer.Argument(..., metavar="ADDRESS", help="Board address shown by trt boards, e.g. 201"),
         port: str | None = typer.Option(None, "--port", "-p", help="Serial port, e.g. COM5"),
@@ -164,22 +164,24 @@ def _register_query(item: str, help_text: str) -> None:
             raise typer.Exit(1) from error
         console.print(f"  [cyan]{result.board_id}[/cyan]  {item}: [bold]{result.value}[/bold]\n", highlight=False)
 
-    command.__name__ = f"board_{item.replace('-', '_')}"
+    command.__name__ = f"board_{(name or item).replace('-', '_')}"
     panel = STATUS_PANEL if item in _STATUS_QUERIES else QUERY_PANEL
-    board_app.command(item, help=help_text, rich_help_panel=panel)(command)
+    board_app.command(name or item, help=help_text, rich_help_panel=panel, hidden=hidden)(command)
 
 
 for _item, _help in _QUERY_HELP.items():
     _register_query(_item, _help)
+# Former name of `trt board mode`, kept as a hidden alias.
+_register_query("mode", "Alias of: trt board mode", name="active-program", hidden=True)
 
 
 @board_app.command(
     "update",
     rich_help_panel=STATUS_PANEL,
-    short_help="Install the application that matches the HWID (--check: report only)",
+    short_help="Install the mode that matches the HWID (--check: report only)",
     help=(
-        "Compare the HWID read from the hardware with the HWID the installed application expects. "
-        "MATCH: nothing to do. MISMATCH: build the matching application, flash it, wait for the "
+        "Compare the HWID read from the hardware with the HWID the installed mode expects. "
+        "MATCH: nothing to do. MISMATCH: build the matching mode, flash it, wait for the "
         "reboot and verify MATCH. --check only reports (exit 0 = MATCH, 1 = MISMATCH). STM32 only today."
     ),
 )
@@ -197,7 +199,7 @@ def board_update(
         readable=True,
     ),
 ) -> None:
-    from trt.commands.build import build_stm32_app, list_programs, resolve_cubeide_dir
+    from trt.commands.build import build_stm32_mode, list_modes, resolve_cubeide_dir
     from trt.commands.flash import flash_stm32_elf
     from trt.services.board_update_service import (
         SUPPORTED_FAMILIES,
@@ -212,9 +214,9 @@ def board_update(
         state = read_board_state(board_id, port)
     except HwidUnsupportedError as error:
         console.print(
-            f"  [yellow]{error}.[/yellow] It predates HWID support, so TRT cannot choose its application.\n"
+            f"  [yellow]{error}.[/yellow] It predates HWID support, so TRT cannot choose its mode.\n"
             "  Install any HWID-aware image once, then run trt discover and retry:\n"
-            "    trt build stm32 app_0000_idle\n    trt flash stm32\n"
+            "    trt build stm32 mode_0000_base\n    trt flash stm32\n"
         )
         raise typer.Exit(2) from error
     except (OSError, RuntimeError, TimeoutError, ValueError) as error:
@@ -235,20 +237,20 @@ def board_update(
     _print_update_plan(plan)
 
     if plan.required is None:
-        console.print(f"  [red]No application for HWID {state.hwid}.[/red] "
-                      f"Available: {', '.join(list_programs(cube_dir)) or 'none'}.\n")
+        console.print(f"  [red]No mode for HWID {state.hwid}.[/red] "
+                      f"Available: {', '.join(list_modes(cube_dir)) or 'none'}.\n")
         raise typer.Exit(1)
     if plan.matches:
-        console.print("  [bold green]MATCH[/bold green] - the installed application matches the hardware. "
+        console.print("  [bold green]MATCH[/bold green] - the installed mode matches the hardware. "
                       "No update required.\n")
         return
     console.print(f"  [bold red]MISMATCH[/bold red] - update required: "
-                  f"{state.installed or 'no application'} -> {plan.required}.\n")
+                  f"{state.installed or 'no mode'} -> {plan.required}.\n")
     if check:
         console.print(f"  Update with: trt board update {state.board_id}\n")
         raise typer.Exit(1)
 
-    elf = build_stm32_app(cube_dir, plan.required)
+    elf = build_stm32_mode(cube_dir, plan.required)
     flash_stm32_elf(elf, plan.required)
     console.print("  [cyan]Waiting for the board to reboot...[/cyan]")
     try:
@@ -260,7 +262,7 @@ def board_update(
     verified = plan_update(after, cube_dir)
     _print_update_plan(verified)
     if not verified.matches:
-        console.print(f"  [red]Verification failed: board reports {after.installed or 'no application'}, "
+        console.print(f"  [red]Verification failed: board reports {after.installed or 'no mode'}, "
                       f"expected {plan.required}.[/red]\n")
         raise typer.Exit(1)
     console.print(f"  [bold green]Updated and verified:[/bold green] {plan.required} is active.\n")
@@ -273,15 +275,15 @@ def _print_update_plan(plan) -> None:
     state = plan.state
     summary = BoardSummary(
         board_id=state.board_id, name="", family=state.family, firmware="", build_id="",
-        active_program=state.installed, hwid_read=state.hwid, port=state.port,
+        active_mode=state.installed, hwid_read=state.hwid, port=state.port,
     )
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column(style="cyan", no_wrap=True)
     table.add_column()
     table.add_row("Board", f"{state.board_id} ({state.family}, {state.port})")
     table.add_row("HWID", f"{hwid_pair(summary)}  {match_text(summary)}  [dim](read / expected)[/dim]")
-    table.add_row("Installed application", state.installed or "[yellow]none declared[/yellow]")
-    table.add_row("Required application", plan.required or "[red]none for this HWID[/red]")
+    table.add_row("Installed mode", state.installed or "[yellow]none declared[/yellow]")
+    table.add_row("Required mode", plan.required or "[red]none for this HWID[/red]")
     console.print(table)
     console.print()
 

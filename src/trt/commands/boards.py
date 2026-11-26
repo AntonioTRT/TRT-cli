@@ -24,6 +24,6 @@ def show_boards() -> None:
 
     render_boards_table(console, [summary_from_board(board) for board in boards])
     console.print(
-        f"\n  [dim]{len(boards)} board(s) listed via TRT serial discovery. "
-        "Details: trt board info <address>.[/dim]\n"
+        f"\n  [dim]{len(boards)} board(s) found by serial discovery. "
+        "Details: trt board info <address>[/dim]\n"
     )

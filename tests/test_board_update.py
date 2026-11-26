@@ -18,7 +18,7 @@ runner = CliRunner()
 DATA = 0x8003
 NACK = 0x8002
 UNSUPPORTED = b"\x00\x02"
-APPS = ("app_0000_idle", "app_0001_blink", "app_0002_analog_family", "app_0004_encoder_family")
+APPS = ("mode_0000_base", "mode_0012_blink", "mode_0002_analog", "mode_0004_encoder")
 
 
 def _info(family: bytes) -> bytes:
@@ -30,7 +30,7 @@ class FakeBoard:
     """What the board answers; `flash` changes the installed application like a real reflash."""
 
     hwid: int | None = 2
-    program: str | None = "app_0000_idle"
+    program: str | None = "mode_0000_base"
     family: bytes = b"STM32"
     commands: list[int] = []
 
@@ -60,7 +60,7 @@ class FakeTransport:
 @pytest.fixture()
 def cube_dir(tmp_path: Path) -> Path:
     project = tmp_path / "TRT-stm32" / "am modulation"
-    programs = project / "Sources" / "programs"
+    programs = project / "Sources" / "modes"
     programs.mkdir(parents=True)
     (project / "CMakeLists.txt").write_text("project(trt01)\n", encoding="utf-8")
     for name in APPS:
@@ -71,7 +71,7 @@ def cube_dir(tmp_path: Path) -> Path:
 @pytest.fixture()
 def toolchain(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
     """Fake build/flash; flashing installs the application on FakeBoard."""
-    FakeBoard.hwid, FakeBoard.program, FakeBoard.family, FakeBoard.commands = 2, "app_0000_idle", b"STM32", []
+    FakeBoard.hwid, FakeBoard.program, FakeBoard.family, FakeBoard.commands = 2, "mode_0000_base", b"STM32", []
     calls: dict[str, list[str]] = {"build": [], "flash": []}
 
     def fake_build(cube: Path, program: str) -> Path:
@@ -82,7 +82,7 @@ def toolchain(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
         calls["flash"].append(name)
         FakeBoard.program = name
 
-    monkeypatch.setattr(build, "build_stm32_app", fake_build)
+    monkeypatch.setattr(build, "build_stm32_mode", fake_build)
     monkeypatch.setattr(flash, "flash_stm32_elf", fake_flash)
     monkeypatch.setattr(board_update_service, "SerialTransport", FakeTransport)
     monkeypatch.setattr(board_query_service, "SerialTransport", FakeTransport)
@@ -96,19 +96,19 @@ def _update(cube: Path, *args: str):
     return runner.invoke(app, ["board", "update", "201", *args, "--project-dir", str(cube)])
 
 
-def test_app_hwid_parses_application_names() -> None:
-    assert build.app_hwid("app_0002_analog_family") == 2
-    assert build.app_hwid("app_0000_idle") == 0
-    assert build.app_hwid("program_blink") is None
-    assert build.app_hwid("app_2_short") is None
+def test_mode_id_parses_application_names() -> None:
+    assert build.mode_id("mode_0002_analog") == 2
+    assert build.mode_id("mode_0000_base") == 0
+    assert build.mode_id("app_0002_analog_family") is None
+    assert build.mode_id("mode_2_short") is None
 
 
-def test_app_for_hwid(cube_dir: Path) -> None:
-    assert build.app_for_hwid(cube_dir, 2) == "app_0002_analog_family"
-    assert build.app_for_hwid(cube_dir, 3) is None
-    (cube_dir / "Sources" / "programs" / "app_0002_other.c").write_text("", encoding="utf-8")
-    with pytest.raises(ValueError, match="Several applications claim HWID 2"):
-        build.app_for_hwid(cube_dir, 2)
+def test_mode_for_hwid(cube_dir: Path) -> None:
+    assert build.mode_for_hwid(cube_dir, 2) == "mode_0002_analog"
+    assert build.mode_for_hwid(cube_dir, 3) is None
+    (cube_dir / "Sources" / "modes" / "mode_0002_other.c").write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="Several modes claim HWID 2"):
+        build.mode_for_hwid(cube_dir, 2)
 
 
 def test_hwid_query(toolchain: dict[str, list[str]]) -> None:
@@ -119,7 +119,7 @@ def test_hwid_query(toolchain: dict[str, list[str]]) -> None:
 
 
 def test_update_does_nothing_when_application_matches(cube_dir: Path, toolchain: dict[str, list[str]]) -> None:
-    FakeBoard.program = "app_0002_analog_family"
+    FakeBoard.program = "mode_0002_analog"
     result = _update(cube_dir)
     assert result.exit_code == 0, result.output
     assert "MATCH" in result.output and "MISMATCH" not in result.output
@@ -130,15 +130,15 @@ def test_check_reports_mismatch_without_flashing(cube_dir: Path, toolchain: dict
     result = _update(cube_dir, "--check")
     assert result.exit_code == 1
     assert "MISMATCH" in result.output
-    assert "app_0002_analog_family" in result.output
+    assert "mode_0002_analog" in result.output
     assert toolchain == {"build": [], "flash": []}
-    assert FakeBoard.program == "app_0000_idle"
+    assert FakeBoard.program == "mode_0000_base"
 
 
 def test_update_builds_flashes_and_verifies(cube_dir: Path, toolchain: dict[str, list[str]]) -> None:
     result = _update(cube_dir)
     assert result.exit_code == 0, result.output
-    assert toolchain == {"build": ["app_0002_analog_family"], "flash": ["app_0002_analog_family"]}
+    assert toolchain == {"build": ["mode_0002_analog"], "flash": ["mode_0002_analog"]}
     assert "Updated and verified" in result.output
 
 
@@ -157,7 +157,7 @@ def test_update_explains_bootstrap_for_firmware_without_hwid(
     FakeBoard.hwid = None
     result = _update(cube_dir)
     assert result.exit_code == 2
-    assert "trt build stm32 app_0000_idle" in result.output
+    assert "trt build stm32 mode_0000_base" in result.output
     assert toolchain == {"build": [], "flash": []}
 
 
@@ -165,7 +165,7 @@ def test_update_rejects_hwid_without_application(cube_dir: Path, toolchain: dict
     FakeBoard.hwid = 3
     result = _update(cube_dir)
     assert result.exit_code == 1
-    assert "No application for HWID 3" in result.output
+    assert "No mode for HWID 3" in result.output
     assert toolchain == {"build": [], "flash": []}
 
 

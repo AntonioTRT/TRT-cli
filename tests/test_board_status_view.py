@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 import trt.transport.serial_transport as serial_transport_module
 from trt.cli import app
-from trt.core.applications import HwidMatch, app_hwid, format_hwid, hwid_match
+from trt.core.modes import HwidMatch, mode_id, format_hwid, hwid_match
 from trt.repositories import board_cache
 from trt.services import board_discovery_service
 from trt.services.board_summary import BoardSummary
@@ -27,7 +27,7 @@ def _info() -> bytes:
 
 class FakeBoard:
     hwid: int | None = 2
-    program: str | None = "app_0002_analog_family"
+    program: str | None = "mode_0002_analog"
 
 
 class FakeTransport:
@@ -65,7 +65,7 @@ class FakeTransport:
 
 @pytest.fixture(autouse=True)
 def fake_board(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    FakeBoard.hwid, FakeBoard.program = 2, "app_0002_analog_family"
+    FakeBoard.hwid, FakeBoard.program = 2, "mode_0002_analog"
     monkeypatch.setattr(board_cache, "cache_path", lambda: tmp_path / "boards.json")
     monkeypatch.setattr(board_discovery_service, "SerialTransport", FakeTransport)
     monkeypatch.setattr(serial_transport_module, "SerialTransport", FakeTransport)
@@ -79,20 +79,20 @@ def test_hwid_formatting_and_match_rules() -> None:
     assert format_hwid(2) == "0010"
     assert format_hwid(0) == "0000"
     assert format_hwid(None) == "----"
-    assert app_hwid("app_0002_analog_family") == 2
+    assert mode_id("mode_0002_analog") == 2
     assert hwid_match(2, 2) is HwidMatch.MATCH
     assert hwid_match(2, 0) is HwidMatch.MISMATCH
     assert hwid_match(None, 2) is HwidMatch.NO_HWID
-    assert hwid_match(2, None) is HwidMatch.NO_APP
-    assert _summary(2, "app_0000_idle").hwid_expected == 0
-    assert _summary(2, "program_blink").match is HwidMatch.NO_APP
+    assert hwid_match(2, None) is HwidMatch.NO_MODE
+    assert _summary(2, "mode_0000_base").hwid_expected == 0
+    assert _summary(2, "program_blink").match is HwidMatch.NO_MODE
 
 
 @pytest.mark.parametrize("command", [["boards"], ["discover"], ["board", "info", "201"]])
 def test_match_is_shown_identically(command: list[str]) -> None:
     result = runner.invoke(app, command)
     assert result.exit_code == 0, result.output
-    assert "app_0002_analog_family" in result.output
+    assert "mode_0002_analog" in result.output
     assert "0010 / 0010" in result.output
     assert "MATCH" in result.output and "MISMATCH" not in result.output
     assert "trt board update" not in result.output
@@ -100,10 +100,10 @@ def test_match_is_shown_identically(command: list[str]) -> None:
 
 @pytest.mark.parametrize("command", [["boards"], ["discover"], ["board", "info", "201"]])
 def test_mismatch_is_shown_identically_with_next_step(command: list[str]) -> None:
-    FakeBoard.program = "app_0000_idle"
+    FakeBoard.program = "mode_0000_base"
     result = runner.invoke(app, command)
     assert result.exit_code == 0, result.output
-    assert "app_0000_idle" in result.output
+    assert "mode_0000_base" in result.output
     assert "0010 / 0000" in result.output
     assert "MISMATCH" in result.output
     assert "trt board update 201" in result.output

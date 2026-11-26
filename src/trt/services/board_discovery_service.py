@@ -27,7 +27,7 @@ from trt.protocol.protocol_client import ProtocolClient
 from trt.protocol.serial_protocol_client import SerialProtocolClient
 from trt.protocol.v01 import decode_info_payload
 from trt.repositories.board_cache import SerialConnection, save_serial_connections
-from trt.services.board_summary import META_FAMILY, application_metadata, read_application_state
+from trt.services.board_summary import META_FAMILY, mode_metadata, read_mode_state
 from trt.repositories.board_repository import BoardRepository
 from trt.transport.serial_transport import SerialTransport
 
@@ -96,7 +96,7 @@ class BoardDiscoveryService:
                 transport.close()
                 continue
             board_type = self._read_info_name(transport, info.board_id or candidate_board_id)
-            application = self._read_application(transport, info.board_id or candidate_board_id)
+            application = self._read_mode(transport, info.board_id or candidate_board_id)
             transport.close()
 
             if not isinstance(capabilities, GetCapabilitiesResponse):
@@ -121,12 +121,12 @@ class BoardDiscoveryService:
         return None
 
     @staticmethod
-    def _read_application(transport: SerialTransport, board_id: str) -> dict[str, str]:
-        """HWID and ACTIVE_PROGRAM as board metadata; empty values when the firmware does not report them."""
+    def _read_mode(transport: SerialTransport, board_id: str) -> dict[str, str]:
+        """HWID and ACTIVE_MODE as board metadata; empty values when the firmware does not report them."""
         try:
-            return application_metadata(*read_application_state(transport, board_id))
+            return mode_metadata(*read_mode_state(transport, board_id))
         except (OSError, RuntimeError, TimeoutError, ValueError):
-            return application_metadata(None, None)
+            return mode_metadata(None, None)
 
     @staticmethod
     def _read_info_name(transport: SerialTransport, board_id: str) -> str:
@@ -157,7 +157,7 @@ class BoardDiscoveryService:
 
             info_fields = decode_info_payload(info.payload)
             capabilities = transport.decode_capabilities(capabilities_response.payload)
-            application = self._read_application(transport, discovered_id)
+            application = self._read_mode(transport, discovered_id)
             board = self._board_from_payload(
                 DiscoveredBoardPayload(
                     board_id=discovered_id,

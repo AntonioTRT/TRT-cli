@@ -28,7 +28,7 @@ def _rows(rows: list[tuple[str, str]], key_style: str = "cyan") -> None:
     table.add_column(style=key_style, no_wrap=True)
     table.add_column()
     for key, value in rows:
-        table.add_row(escape(key), value)  # keys are literal: [application] is not markup
+        table.add_row(escape(key), value)  # keys are literal: [mode] is not markup
     console.print(Padding(table, _INDENT), highlight=False)
 
 
@@ -36,7 +36,7 @@ def show_help() -> None:
     console.print()
     console.print("[bold cyan]TRT - Tool Runtime Terminal[/bold cyan]")
     _text(
-        "Discover TRT boards, check that the firmware matches the connected hardware,\n"
+        "Discover TRT boards, check that the mode matches the connected hardware,\n"
         "update it, and monitor the board. Workflow:\n"
         "[bold]discover -> boards -> info -> hwid -> update -> MATCH -> listen[/bold]"
     )
@@ -51,35 +51,40 @@ def show_help() -> None:
     _text("  Today the carrier shows as name, type and revision in [cyan]trt board info[/cyan].")
     console.print()
     _text("[bold]HWID[/bold]  Identifies the daughter board connected to the carrier, read from")
-    _text("  the ID pins at boot. It decides which application the board needs.")
-    _text("  Shown as the pin pattern D6 D5 D4 D3 (VCC = 1, GND or open = 0):")
+    _text("  the ID pins at boot. It decides which mode the board needs.")
+    _text("  Shown as the pin pattern D6 D5 D4 D3 (VCC = 1, GND or open = 0).")
+    console.print()
+    _text("[bold]Mode[/bold]  What the firmware does with the daughter board: mode_<ID>_<name>.")
+    _text("  The mode ID is the HWID it is written for, the same on every platform:")
     _rows(
         [
-            ("  0000", "no daughter board         -> app_0000_idle"),
-            ("  0001", "blink / test              -> app_0001_blink"),
-            ("  0010", "analog family             -> app_0002_analog_family"),
-            ("  0011", "keypad family             -> app_0003_keypad_family"),
-            ("  0100", "encoder family            -> app_0004_encoder_family"),
+            ("  HWID 0000", "mode_0000_base         Base Mode: no daughter board"),
+            ("  HWID 0010", "mode_0002_analog       Analog"),
+            ("  HWID 0011", "mode_0003_keypad       Keypad"),
+            ("  HWID 0100", "mode_0004_encoder      Encoder"),
+            ("  HWID 0101", "mode_0005_display_i2c  Display (I2C, OLED)"),
+            ("  HWID 0110", "mode_0006_display_spi  Display (SPI, TFT)"),
+            ("  HWID 0111", "mode_0007_led          LED (rings, strips)"),
+            ("  HWID 1100", "mode_0012_blink        Blink / test (never production)"),
         ]
     )
+    _text("  Reserved: 0001 self-describing module, 1110 factory test, 1111 fault.")
+    _text("  Base Mode is the recovery / maintenance runtime (TRT-Core, discovery,")
+    _text("  information, HWID, update, heartbeat). Every firmware image contains it.")
     console.print()
-    _text("[bold]Application ID[/bold]  The firmware application installed on the board, named")
-    _text("  app_<HWID>_<name>. The 4 digits are the HWID it is written for (decimal):")
-    _text("  app_0002_analog_family expects HWID 2 = pin pattern 0010.")
-    console.print()
-    _text("Address  != Board ID     how to reach the board  vs  which carrier it is")
-    _text("Board ID != HWID         the carrier             vs  the daughter board")
-    _text("HWID     != Application  the connected hardware  vs  the installed firmware")
+    _text("Address  != Board ID  how to reach the board  vs  which carrier it is")
+    _text("Board ID != HWID      the carrier             vs  the daughter board")
+    _text("HWID     != Mode      the connected hardware  vs  the installed firmware")
 
     _section("Reading the board status")
     _text("[cyan]trt boards[/cyan] and [cyan]trt board info[/cyan] show, for every board:")
     _rows(
         [
-            ("HWID", "read from the hardware / expected by the installed application"),
-            ("Status", "[bold green]MATCH[/bold green] firmware fits the hardware, nothing to do"),
-            ("", "[bold red]MISMATCH[/bold red] firmware is for other hardware: run trt board update"),
+            ("HWID", "read from the hardware / expected by the installed mode"),
+            ("Status", "[bold green]MATCH[/bold green] mode fits the hardware, nothing to do"),
+            ("", "[bold red]MISMATCH[/bold red] mode is for other hardware: run trt board update"),
             ("", "[yellow]NO HWID[/yellow] firmware too old to read the HWID: run trt board update"),
-            ("", "[yellow]NO APP[/yellow] firmware declares no app_<HWID>_* application"),
+            ("", "[yellow]NO MODE[/yellow] firmware declares no mode_<ID>_* mode"),
         ]
     )
     console.print()
@@ -87,7 +92,7 @@ def show_help() -> None:
     _text("  HWID read      0010                HWID read      0010")
     _text("  HWID expected  0010                HWID expected  0000")
     _text("  Status         [bold green]MATCH[/bold green]               Status         [bold red]MISMATCH[/bold red]")
-    _text("  analog board + analog app          analog board + idle app: update!")
+    _text("  analog board + analog mode         analog board + base mode: update!")
     console.print()
     _text("[cyan]trt boards[/cyan] shows it as  [bold]0010 / 0010  MATCH[/bold]  or  [bold]0010 / 0000  MISMATCH[/bold]")
 
@@ -95,10 +100,10 @@ def show_help() -> None:
     _rows(
         [
             ("1. trt discover", "find the boards on the serial ports"),
-            ("2. trt boards", "address, application, HWID, status"),
+            ("2. trt boards", "address, mode, HWID, status"),
             ("3. trt board info 201", "check one board in detail"),
             ("4. trt board hwid 201", "which daughter board is connected"),
-            ("5. trt board active-program 201", "which application is installed"),
+            ("5. trt board mode 201", "which mode is installed"),
             ("6. trt board update 201", "if MISMATCH: build, flash, reboot, verify"),
             ("7. trt boards", "confirm the board now shows MATCH"),
             ("8. trt listen", "monitor the running board (Ctrl+C)"),
@@ -137,10 +142,10 @@ def show_help() -> None:
     console.print("[bold]  Board management[/bold]")
     _rows(
         [
-            ("  trt board info <address>", "Status (app, HWID, MATCH) + details"),
+            ("  trt board info <address>", "Status (mode, HWID, MATCH) + details"),
             ("  trt board hwid <address>", "HWID of the daughter board"),
-            ("  trt board active-program <address>", "Application in the firmware"),
-            ("  trt board update <address>", "Install the app matching the HWID"),
+            ("  trt board mode <address>", "Mode installed in the firmware"),
+            ("  trt board update <address>", "Install the mode matching the HWID"),
             ("  trt board update <address> --check", "Report MATCH / MISMATCH only"),
             ("  trt board <query> <address>", "One value. <query>: name, type,"),
             ("", "revision, version, build-id,"),
@@ -158,9 +163,9 @@ def show_help() -> None:
     console.print("[bold]  Development[/bold]  [dim](STM32 firmware; trt board update runs these for you)[/dim]")
     _rows(
         [
-            ("  trt list-programs stm32", "Applications that can be built"),
-            ("  trt build stm32 <application>", "Build one application, no flashing"),
-            ("  trt flash stm32 [application]", "Flash the latest (or named) build"),
+            ("  trt list-modes stm32", "Modes that can be built"),
+            ("  trt build stm32 <mode>", "Build one mode, no flashing"),
+            ("  trt flash stm32 [mode]", "Flash the latest (or named) build"),
             ("  trt flash stm32 --platformio", "Legacy PlatformIO build and upload"),
             ("  trt stm32 test", "Protocol self-test of an STM32 board"),
         ]

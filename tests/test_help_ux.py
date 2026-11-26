@@ -45,10 +45,10 @@ def test_dash_dash_help_groups_commands_in_workflow_order() -> None:
 def test_trt_help_is_the_full_reference() -> None:
     output = runner.invoke(app, ["help"]).output
     for text in (
-        "Concepts", "Board Address", "Board ID", "HWID", "Application ID",
+        "Concepts", "Board Address", "Board ID", "HWID", "Mode", "Base Mode", "mode_0007_led",
         "Not implemented yet", "Reading the board status", "MATCH", "MISMATCH",
         "HWID read      0010", "HWID expected  0000", "Typical workflow", "Heartbeat",
-        "trt board listen <address>", "trt flash stm32 [application]", "Update the TRT CLI itself",
+        "trt board listen <address>", "trt flash stm32 [mode]", "trt list-modes stm32", "Update the TRT CLI itself",
     ):
         assert text in output, text
     assert "gpio" not in output and "--dev" not in output
@@ -68,3 +68,11 @@ def test_hidden_commands_still_work() -> None:
     assert runner.invoke(app, ["lcd", "info"]).exit_code == 0
     assert runner.invoke(app, ["board", "gpio", "--help"]).exit_code == 0
     assert runner.invoke(app, ["protocol", "--help"]).exit_code == 0
+
+
+def test_former_names_are_hidden_aliases() -> None:
+    assert "list-programs" not in runner.invoke(app, ["--help"]).output
+    assert runner.invoke(app, ["list-programs", "--help"]).exit_code == 0
+    board_help = runner.invoke(app, ["board", "--help"]).output
+    assert _lists_command(board_help, "mode") and not _lists_command(board_help, "active-program")
+    assert runner.invoke(app, ["board", "active-program", "--help"]).exit_code == 0

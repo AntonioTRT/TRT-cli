@@ -1,10 +1,10 @@
 """Firmware/HWID consistency check and update for one board.
 
-Production model: a board carries TRT-Core plus exactly one application, chosen for the daughter
+Production model: a board carries TRT-Core (Base Mode) plus exactly one mode, chosen for the daughter
 board fitted to it. The daughter board is identified by its hardware ID (HWID), which the firmware
-reads from ID pins at boot and reports with the HWID query (0x000B). The application reports its
-name with ACTIVE_PROGRAM (0x000A); applications are named app_<HWID, 4 digits>_<name>, so the
-installed application matches the board when the HWID in its name equals the board's HWID.
+reads from ID pins at boot and reports with the HWID query (0x000B). The firmware reports its mode
+with ACTIVE_MODE (0x000A); modes are named mode_<ID, 4 digits>_<name> and the mode ID is the HWID it
+expects, so the installed mode matches the board when that ID equals the board's HWID.
 """
 
 from __future__ import annotations
@@ -13,11 +13,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from trt.commands.build import app_for_hwid
-from trt.core.applications import app_hwid
+from trt.commands.build import mode_for_hwid
+from trt.core.modes import mode_id
 from trt.protocol.v01 import decode_info_payload
 from trt.services.board_query_service import (
-    CMD_ACTIVE_PROGRAM,
+    CMD_ACTIVE_MODE,
     CMD_HWID,
     CMD_INFO,
     RESP_DATA,
@@ -40,17 +40,17 @@ class BoardState:
     port: str
     family: str
     hwid: int
-    installed: str | None  # ACTIVE_PROGRAM; None when the firmware declares no application
+    installed: str | None  # ACTIVE_MODE; None when the firmware declares no mode
 
 
 @dataclass(frozen=True)
 class UpdatePlan:
     state: BoardState
-    required: str | None  # application for the board's HWID; None when the project has none
+    required: str | None  # mode for the board's HWID; None when the project has none
 
     @property
     def installed_hwid(self) -> int | None:
-        return app_hwid(self.state.installed) if self.state.installed else None
+        return mode_id(self.state.installed) if self.state.installed else None
 
     @property
     def matches(self) -> bool:
@@ -67,12 +67,12 @@ def read_board_state(board_id: str, port: str | None = None) -> BoardState:
         _require_data(hwid_frame.command, "HWID")
         hwid = decode_hwid(hwid_frame.payload)
 
-        program_frame = transport.exchange_command(CMD_ACTIVE_PROGRAM, resolved_id)
+        program_frame = transport.exchange_command(CMD_ACTIVE_MODE, resolved_id)
         installed = None
         if program_frame.command == RESP_DATA:
             installed = program_frame.payload.decode("utf-8", errors="replace")
         elif program_frame.command != RESP_NACK:
-            _require_data(program_frame.command, "ACTIVE_PROGRAM")
+            _require_data(program_frame.command, "ACTIVE_MODE")
 
         info_frame = transport.exchange_command(CMD_INFO, resolved_id)
         _require_data(info_frame.command, "INFO")
@@ -83,7 +83,7 @@ def read_board_state(board_id: str, port: str | None = None) -> BoardState:
 
 
 def plan_update(state: BoardState, cube_dir: Path) -> UpdatePlan:
-    return UpdatePlan(state=state, required=app_for_hwid(cube_dir, state.hwid))
+    return UpdatePlan(state=state, required=mode_for_hwid(cube_dir, state.hwid))
 
 
 def wait_for_board(board_id: str, port: str, timeout: float = 20.0, interval: float = 1.0) -> BoardState:

@@ -14,7 +14,7 @@ CMD_INFO = 0x0004
 CMD_BUILD_ID = 0x0007
 CMD_UPTIME = 0x0008
 CMD_RUNTIME = 0x0009
-CMD_ACTIVE_PROGRAM = 0x000A
+CMD_ACTIVE_MODE = 0x000A
 CMD_HWID = 0x000B
 
 RESP_NACK = 0x8002
@@ -80,13 +80,13 @@ _SIMPLE = {
     "revision": (CMD_BOARD_VERSION, _text),
     "runtime": (CMD_RUNTIME, _runtime),
     "uptime": (CMD_UPTIME, _uptime),
-    "active-program": (CMD_ACTIVE_PROGRAM, _text),
+    "mode": (CMD_ACTIVE_MODE, _text),
     "hwid": (CMD_HWID, _hwid),
 }
 # Queries answered from the INFO fields: item -> decoded field name.
 _INFO_FIELDS = {"name": "board_type", "type": "family"}
 
-ITEMS = ("id", "name", "type", "revision", "version", "build-id", "runtime", "active-program", "hwid", "uptime", "transport")
+ITEMS = ("id", "name", "type", "revision", "version", "build-id", "runtime", "mode", "hwid", "uptime", "transport")
 
 
 class BoardQueryService:

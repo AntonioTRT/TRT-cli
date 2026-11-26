@@ -8,20 +8,20 @@ from collections.abc import Sequence
 from rich.console import Console
 from rich.table import Table
 
-from trt.core.applications import HwidMatch, format_hwid
+from trt.core.modes import HwidMatch, format_hwid
 from trt.services.board_summary import BoardSummary
 
 _MATCH_STYLE = {
     HwidMatch.MATCH: "bold green",
     HwidMatch.MISMATCH: "bold red",
     HwidMatch.NO_HWID: "yellow",
-    HwidMatch.NO_APP: "yellow",
+    HwidMatch.NO_MODE: "yellow",
 }
 _MATCH_HINT = {
-    HwidMatch.MATCH: "application matches the hardware",
-    HwidMatch.MISMATCH: "application is for other hardware",
+    HwidMatch.MATCH: "mode matches the hardware",
+    HwidMatch.MISMATCH: "mode is for other hardware",
     HwidMatch.NO_HWID: "firmware cannot read the HWID",
-    HwidMatch.NO_APP: "no app_<HWID>_* application declared",
+    HwidMatch.NO_MODE: "no mode_<ID>_* mode declared",
 }
 
 
@@ -31,7 +31,7 @@ def match_text(summary: BoardSummary) -> str:
 
 
 def hwid_pair(summary: BoardSummary) -> str:
-    """'0010 / 0010': HWID read from the hardware / HWID the installed application expects."""
+    """'0010 / 0010': HWID read from the hardware / HWID the installed mode expects."""
     return f"{format_hwid(summary.hwid_read)} / {format_hwid(summary.hwid_expected)}"
 
 
@@ -49,12 +49,12 @@ def render_boards_table(console: Console, summaries: Sequence[BoardSummary]) -> 
         title_justify="left",
         caption_justify="left",
         title="[bold cyan]Connected Boards[/bold cyan]",
-        caption="[dim]HWID: read from hardware / expected by the installed application[/dim]",
+        caption="[dim]HWID: read from hardware / expected by the installed mode[/dim]",
     )
     table.add_column("Addr", style="bold cyan", no_wrap=True)
     table.add_column("Name", style="magenta", overflow="fold")
     table.add_column("Firmware", no_wrap=True)
-    table.add_column("Application", style="white", overflow="fold", min_width=12)
+    table.add_column("Mode", style="white", overflow="fold", min_width=12)
     table.add_column("HWID", no_wrap=True)
     table.add_column("Status", no_wrap=True)
     for summary in summaries:
@@ -63,7 +63,7 @@ def render_boards_table(console: Console, summaries: Sequence[BoardSummary]) -> 
             summary.board_id,
             summary.name,
             firmware,
-            summary.active_program or "[dim]-[/dim]",
+            summary.active_mode or "[dim]-[/dim]",
             hwid_pair(summary),
             match_text(summary),
         )
@@ -76,6 +76,11 @@ def render_next_steps(console: Console, summaries: Sequence[BoardSummary]) -> No
         if summary.match is HwidMatch.MISMATCH:
             console.print(
                 f"  [bold red]Board {summary.board_id}: update required.[/bold red] "
+                f"Run [cyan]trt board update {summary.board_id}[/cyan]"
+            )
+        elif summary.match is HwidMatch.NO_MODE:
+            console.print(
+                f"  [yellow]Board {summary.board_id}: no standard mode installed.[/yellow] "
                 f"Run [cyan]trt board update {summary.board_id}[/cyan]"
             )
         elif summary.match is HwidMatch.NO_HWID:
@@ -92,7 +97,7 @@ def summary_rows(summary: BoardSummary) -> list[tuple[str, str]]:
         ("Address", summary.board_id),
         ("Name", f"{summary.name}{family}"),
         ("Firmware", f"{summary.firmware}  build {summary.build_id}"),
-        ("Application", summary.active_program or "[dim]none declared[/dim]"),
+        ("Mode", summary.active_mode or "[dim]none declared[/dim]"),
         (
             "HWID",
             f"{hwid_pair(summary)}  [dim](read {_hwid_decimal(summary.hwid_read)}"

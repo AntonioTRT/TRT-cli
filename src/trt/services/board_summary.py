@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trt.core.applications import HwidMatch, app_hwid, hwid_match
+from trt.core.modes import HwidMatch, mode_id, hwid_match
 from trt.core.models import Board
 from trt.transport.serial_transport import SerialTransport
 
-CMD_ACTIVE_PROGRAM = 0x000A
+CMD_ACTIVE_MODE = 0x000A
 CMD_HWID = 0x000B
 RESP_DATA = 0x8003
 
@@ -17,7 +17,7 @@ RESP_DATA = 0x8003
 META_NAME = "board_type"  # INFO field 0x01 (V0.1 calls the board name "board type")
 META_FAMILY = "family"
 META_BUILD_ID = "build_id"
-META_ACTIVE_PROGRAM = "active_program"
+META_ACTIVE_MODE = "active_mode"
 META_HWID = "hwid"
 
 
@@ -28,34 +28,34 @@ class BoardSummary:
     family: str
     firmware: str
     build_id: str
-    active_program: str | None
+    active_mode: str | None
     hwid_read: int | None
     port: str | None = None
 
     @property
     def hwid_expected(self) -> int | None:
-        return app_hwid(self.active_program)
+        return mode_id(self.active_mode)
 
     @property
     def match(self) -> HwidMatch:
         return hwid_match(self.hwid_read, self.hwid_expected)
 
 
-def read_application_state(transport: SerialTransport, board_id: str) -> tuple[int | None, str | None]:
-    """(HWID, ACTIVE_PROGRAM) from the board; None for each value the firmware does not report."""
+def read_mode_state(transport: SerialTransport, board_id: str) -> tuple[int | None, str | None]:
+    """(HWID, ACTIVE_MODE) from the board; None for each value the firmware does not report."""
     hwid_frame = transport.exchange_command(CMD_HWID, board_id)
     hwid = None
     if hwid_frame.command == RESP_DATA and len(hwid_frame.payload) == 2:
         hwid = int.from_bytes(hwid_frame.payload, byteorder="big")
-    program_frame = transport.exchange_command(CMD_ACTIVE_PROGRAM, board_id)
+    program_frame = transport.exchange_command(CMD_ACTIVE_MODE, board_id)
     program = None
     if program_frame.command == RESP_DATA and program_frame.payload:
         program = program_frame.payload.decode("utf-8", errors="replace")
     return hwid, program
 
 
-def application_metadata(hwid: int | None, program: str | None) -> dict[str, str]:
-    return {META_HWID: "" if hwid is None else str(hwid), META_ACTIVE_PROGRAM: program or ""}
+def mode_metadata(hwid: int | None, program: str | None) -> dict[str, str]:
+    return {META_HWID: "" if hwid is None else str(hwid), META_ACTIVE_MODE: program or ""}
 
 
 def summary_from_board(board: Board) -> BoardSummary:
@@ -67,7 +67,7 @@ def summary_from_board(board: Board) -> BoardSummary:
         family=meta.get(META_FAMILY, ""),
         firmware=board.identity.firmware or "-",
         build_id=meta.get(META_BUILD_ID) or board.identity.serial or "-",
-        active_program=meta.get(META_ACTIVE_PROGRAM) or None,
+        active_mode=meta.get(META_ACTIVE_MODE) or None,
         hwid_read=int(hwid_text) if hwid_text.isdigit() else None,
         port=board.transport.port if board.transport else None,
     )

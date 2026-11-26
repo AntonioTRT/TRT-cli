@@ -9,7 +9,7 @@ QUICK_START = (
     ("trt discover", "Discover TRT boards"),
     ("trt boards", "Show discovered boards and their MATCH status"),
     ("trt board info <address>", "Show board information"),
-    ("trt board update <address>", "Install the firmware that matches the HWID"),
+    ("trt board update <address>", "Install the mode that matches the HWID"),
     ("trt listen", "Monitor heartbeat and events"),
 )
 

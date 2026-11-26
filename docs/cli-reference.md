@@ -6,10 +6,10 @@ Complete reference for all `trt` commands.
 
 ```text
 trt discover                  Discover TRT boards
-trt boards                    Show boards: application, HWID read / expected, MATCH
+trt boards                    Show boards: mode, HWID read / expected, MATCH
 trt board info <address>      One board in detail
 trt board hwid <address>      Which daughter board is connected
-trt board active-program <address>   Which application is installed
+trt board mode <address>      Which mode is installed
 trt board update <address>    If MISMATCH: build, flash, reboot, verify MATCH
 trt listen                    Monitor heartbeat and events (Ctrl+C)
 ```
@@ -28,10 +28,22 @@ Three help levels, from short to complete:
 |---|---|---|
 | Board Address | How TRT talks to a board: the number in every command (`<address>`). Not a hardware identifier. | `201` |
 | Board ID | Identifies the carrier board, to select its board profile. **Not implemented yet** (planned: ADC resistor divider). Today: name, type, revision in `trt board info`. | `NUCLEO-L073RZ` |
-| HWID | Identifies the daughter board, read from ID pins D6..D3 at boot. Decides the required application. | `0010` (= 2) |
-| Application ID | The installed firmware application, `app_<HWID>_<name>`; the digits are the HWID it expects. | `app_0002_analog_family` |
+| HWID | Identifies the daughter board, read from ID pins D6..D3 at boot. Decides the required mode. | `0010` (= 2) |
+| Mode ID | The installed mode, `mode_<ID>_<name>`; the ID is the HWID it expects, common to all platforms. `0000` = Base Mode (recovery / maintenance, no daughter board). See the table below. | `mode_0002_analog` |
 
-Status: `HWID 0010 / 0010 MATCH` (read from hardware / expected by the installed application)
+HWID codes (TRT_CHAINING_SPEC_v0.1, D-09) and modes:
+
+| HWID | Mode | | HWID | Meaning |
+|---|---|---|---|---|
+| `0000` | `mode_0000_base` (Base Mode) | | `0001` | Self-describing module (descriptor), no mode |
+| `0010` | `mode_0002_analog` | | `1000`-`1011` | Reserved families |
+| `0011` | `mode_0003_keypad` | | `1100` | `mode_0012_blink` (experimental, never production) |
+| `0100` | `mode_0004_encoder` | | `1101` | Experimental / custom |
+| `0101` | `mode_0005_display_i2c` | | `1110` | Factory test fixture |
+| `0110` | `mode_0006_display_spi` | | `1111` | Fault / invalid |
+| `0111` | `mode_0007_led` | | | |
+
+Status: `HWID 0010 / 0010 MATCH` (read from hardware / expected by the installed mode)
 means nothing to do; `0010 / 0000 MISMATCH` means run `trt board update <address>`.
 Details: TRT-core `docs/hwid-and-firmware-update.md`.
 
@@ -60,11 +72,11 @@ trt --show-completion       Show completion script
 ## STM32 NUCLEO-L073RZ
 
 ```powershell
-trt list-programs stm32 [--project-dir PATH]
-trt board <id|name|type|revision|version|build-id|runtime|active-program|hwid|uptime|transport> <address> [--port COM5]
+trt list-modes stm32 [--project-dir PATH]
+trt board <id|name|type|revision|version|build-id|runtime|mode|hwid|uptime|transport> <address> [--port COM5]
 trt board update <address> [--check] [--port COM5] [--project-dir PATH]
-trt build stm32 <app> [--project-dir PATH]
-trt flash stm32 [app] [--project-dir PATH]
+trt build stm32 <mode> [--project-dir PATH]
+trt flash stm32 [mode] [--project-dir PATH]
 trt flash stm32 --platformio [--port COM5] [--project-dir PATH]
 trt stm32 test [--port COM5] [--board-id 0x0002]
 trt board info 2 [--port COM5]
@@ -82,7 +94,7 @@ already knows and prints it (`--port` overrides the saved/discovered port):
 | `board version` | FW_VERSION |
 | `board build-id` | BUILD_ID |
 | `board runtime` | RUNTIME (`RUNNING`) |
-| `board active-program` | ACTIVE_PROGRAM |
+| `board mode` | ACTIVE_MODE |
 | `board hwid` | HWID (0x000B): daughter-board hardware ID read from the ID pins |
 | `board uptime` | UPTIME (`DD HH:MM:SS.mmm (N ms)`) |
 | `board transport` | the host's connection (port and baud rate); no firmware query |
@@ -99,8 +111,8 @@ already knows and prints it (`--port` overrides the saved/discovered port):
 | `board revision` | Hardware revision | live, BOARD_VERSION | |
 | `board id` | Confirms which ID the board replies with | live, reply header | You already pass the ID in; `trt boards` lists IDs |
 | `board runtime` | TRT-Core runtime state | live, RUNTIME | Currently only `RUNNING` |
-| `board active-program` | Application on the board | live, ACTIVE_PROGRAM | Unique |
-| `board hwid` | Daughter-board hardware ID | live, HWID | Compared with the application by `board update` |
+| `board mode` | Mode installed on the board (old name `active-program` still works) | live, ACTIVE_MODE | Unique |
+| `board hwid` | Daughter-board hardware ID | live, HWID | Compared with the mode ID by `board update` |
 | `board uptime` | Time since boot | live, UPTIME | Unique |
 | `board transport` | How the host reaches the board | host, saved/discovered connection | No firmware query |
 | `board capabilities` | Capability list | discovery scan, then render | Also shown in `board info` |
@@ -118,41 +130,41 @@ Findings that are not duplication but worth knowing:
 - `board id` and `board runtime` carry little information: the first echoes the ID you supplied, the second can only say `RUNNING` because any reply proves the runtime is polling.
 
 `board info`, `board status` and `board capabilities` are unchanged. If the firmware does not
-provide a value (older firmware, or no clock / no active program declared), the command prints
+provide a value (older firmware, or no clock / no mode declared), the command prints
 `unsupported` and exits with code 2; other failures exit with code 1. Build date and build time
 are not available in TRT-Core and have no command.
 
-`board update <address>` checks that the installed application matches the board's
-HWID and fixes it if not (STM32 only). It reads HWID, ACTIVE_PROGRAM and the INFO family,
-picks the application `app_<HWID>_*` from the STM32CubeIDE project, and prints both. On a
-match it exits 0. On a mismatch it builds the required application, flashes it with
+`board update <address>` checks that the installed mode matches the board's
+HWID and fixes it if not (STM32 only). It reads HWID, ACTIVE_MODE and the INFO family,
+picks the mode `mode_<ID>_*` from the STM32CubeIDE project, and prints both. On a
+match it exits 0. On a mismatch it builds the required mode, flashes it with
 verify and reset, waits up to 20 s for the board to answer again, and re-reads HWID
-and ACTIVE_PROGRAM. It exits 0 when the board reports the required application, else 1.
+and ACTIVE_MODE. It exits 0 when the board reports the required mode, else 1.
 `--check` only reports and exits 1 on mismatch. Firmware that does not report a HWID
-exits 2 with the one-time bootstrap commands (`trt build stm32 app_0000_idle`,
+exits 2 with the one-time bootstrap commands (`trt build stm32 mode_0000_base`,
 `trt flash stm32`, `trt discover`). The model is documented in TRT-core
 `docs/hwid-and-firmware-update.md`.
 
-`list-programs stm32` prints one application name per line, discovered from the
-files `Sources/programs/app_<HWID>_<name>.c` of the STM32CubeIDE project (sorted; files not
+`list-modes stm32` (old name `list-programs` still works) prints one mode name per line, discovered from the
+files `Sources/modes/mode_<ID>_<name>.c` of the STM32CubeIDE project (sorted; files not
 following that naming are ignored; read-only, it builds and flashes nothing). These are
 exactly the names `build stm32` and `flash stm32` accept. It exits with code 1 if no
-program is found.
+mode is found.
 
-`build stm32 <app>` builds one application of the STM32CubeIDE project
+`build stm32 <mode>` builds one mode of the STM32CubeIDE project
 (`TRT-core/TRT-stm32/am modulation`) with TRT-Core included, in
-`build/<app>/` (CubeIDE's `Debug/` is not touched), via
-`cmake ... -DACTIVE_PROGRAM=APP_<HWID>_<NAME>` and `cmake --build`. It copies the
-`.elf` to `artifacts/<app>/<app>.elf` and records it in
+`build/<mode>/` (CubeIDE's `Debug/` is not touched), via
+`cmake ... -DACTIVE_MODE=MODE_<ID>_<NAME>` and `cmake --build`. It copies the
+`.elf` to `artifacts/<mode>/<mode>.elf` and records it in
 `artifacts/latest.json`. It never flashes. Needs `cmake` and `arm-none-eabi-gcc`
 (and uses `ninja` if present): from `PATH`, or else the copies bundled with
 STM32CubeIDE under `C:\ST\STM32CubeIDE_*`. Valid names are the files in
-`Sources/programs/app_<HWID>_<name>.c`; an unknown name lists them.
+`Sources/modes/mode_<ID>_<name>.c`; an unknown name lists them.
 
 `flash stm32` flashes an existing artifact and never builds: with no name the
-most recent build (`latest.json`), with a name that application's stored build,
+most recent build (`latest.json`), with a name that mode's stored build,
 using `STM32_Programmer_CLI -c port=SWD -w <elf> -v -rst` (from `PATH` or STM32CubeIDE).
-If nothing is built it tells you to run `trt build stm32 <app>`.
+If nothing is built it tells you to run `trt build stm32 <mode>`.
 `flash stm32 --platformio` keeps the previous behaviour: it runs
 `python -m platformio run -d <TRT-stm32> -t upload` (`--port` applies only here).
 `stm32 test` scans serial ports unless one is specified and sends all six
@@ -269,7 +281,7 @@ TRT Core 0.1.0
 
 ## trt help
 
-The full reference: concepts (Board Address, Board ID, HWID, Application ID), how to read
+The full reference: concepts (Board Address, Board ID, HWID, Mode ID), how to read
 MATCH / MISMATCH, the typical workflow, heartbeat, and every visible command grouped by
 purpose. `trt` alone shows the Quick Start; `trt --help` the grouped command list.
 
@@ -400,36 +412,36 @@ List all boards currently known to TRT.
 trt boards
 ```
 
-**Output columns:** ID · Name · Firmware (version #build) · Application · HWID (read / expected) · Status
+**Output columns:** Addr · Name · Firmware (version #build) · Mode · HWID (read / expected) · Status
 
-- **Application**: ACTIVE_PROGRAM, the application installed in the firmware.
+- **Mode**: ACTIVE_MODE, the mode installed in the firmware.
 - **HWID read / expected**: the hardware ID read from the board's ID pins (D6..D3, e.g. `0010` = 2)
-  / the HWID the installed application is written for (the digits in `app_<HWID>_<name>`).
+  / the HWID the installed mode is written for (the digits in `mode_<ID>_<name>`).
   `----` when the firmware does not report it.
 - **Status**: `MATCH`, `MISMATCH` (update required), `NO HWID` (firmware cannot read the HWID) or
-  `NO APP` (no `app_<HWID>_*` application declared). Below the table, every board that needs
+  `NO MODE` (no `mode_<ID>_*` mode declared, e.g. an image from before the rename). Below the table, every board that needs
   action gets one line with the command to run.
 
 **Example (match):**
 ```
 Connected Boards
-Addr  Name           Firmware       Application             HWID         Status
-201   am-modulation  0.1.0 #000001  app_0002_analog_family  0010 / 0010  MATCH
-HWID: read from hardware / expected by the installed application
+Addr  Name           Firmware       Mode              HWID         Status
+201   am-modulation  0.1.0 #000001  mode_0002_analog  0010 / 0010  MATCH
+HWID: read from hardware / expected by the installed mode
 ```
 
 **Example (mismatch):**
 ```
 Connected Boards
-Addr  Name           Firmware       Application    HWID         Status
-201   am-modulation  0.1.0 #000001  app_0000_idle  0010 / 0000  MISMATCH
-HWID: read from hardware / expected by the installed application
+Addr  Name           Firmware       Mode            HWID         Status
+201   am-modulation  0.1.0 #000001  mode_0000_base  0010 / 0000  MISMATCH
+HWID: read from hardware / expected by the installed mode
   Board 201: update required. Run trt board update 201
 ```
 
 `trt boards`, `trt discover` and `trt board info <address>` show the same status values;
 `board info` adds port, revision, protocol, serial and capabilities. Board address, Board ID,
-HWID and Application ID are explained in TRT-core `docs/hwid-and-firmware-update.md`.
+HWID and Mode ID are explained in TRT-core `docs/hwid-and-firmware-update.md`.
 
 ---
 
@@ -467,9 +479,9 @@ trt board info 201
 |   Address        201                                       |
 |   Name           am-modulation (STM32)                     |
 |   Firmware       0.1.0  build 000001                       |
-|   Application    app_0002_analog_family                    |
+|   Mode           mode_0002_analog                          |
 |   HWID           0010 / 0010  (read 2 / expected 2)        |
-|   Status         MATCH  application matches the hardware   |
+|   Status         MATCH  mode matches the hardware          |
 +------------------------------------------------------------+
 +------------- Details -------------+
 |   Port            COM9            |
@@ -481,7 +493,7 @@ trt board info 201
 ```
 
 On a mismatch the HWID line reads `0010 / 0000  (read 2 / expected 0)`, the status
-`MISMATCH  application is for other hardware`, and a final line says
+`MISMATCH  mode is for other hardware`, and a final line says
 `Board 201: update required. Run trt board update 201`.
 
 ### trt board \<id\> status

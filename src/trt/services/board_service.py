@@ -66,7 +66,7 @@ class RealBoardInfoResult:
     info: dict[str, str] = field(default_factory=dict)
     capabilities: tuple[str, ...] = ()
     hwid: int | None = None  # HWID query; None when the firmware does not report one
-    active_program: str | None = None  # ACTIVE_PROGRAM; None when none is declared
+    active_mode: str | None = None  # ACTIVE_MODE; None when none is declared
 
     def summary(self) -> "BoardSummary":
         from trt.services.board_summary import BoardSummary
@@ -77,7 +77,7 @@ class RealBoardInfoResult:
             family=self.info.get("family", ""),
             firmware=self.fw_version,
             build_id=self.build_id,
-            active_program=self.active_program,
+            active_mode=self.active_mode,
             hwid_read=self.hwid,
             port=self.port,
         )
@@ -238,7 +238,7 @@ class BoardService:
 
     def real_board_info(self, board_id: str, port: str | None = None) -> RealBoardInfoResult:
         from trt.protocol.serial_protocol_client import SerialProtocolClient
-        from trt.services.board_summary import read_application_state
+        from trt.services.board_summary import read_mode_state
         from trt.transport.serial_transport import SerialTransport
 
         resolved_board_id, port, baudrate = resolve_serial_connection(board_id, port)
@@ -260,7 +260,7 @@ class BoardService:
                             f"for board {resolved_board_id}"
                         )
                 info = decode_info_payload(info_frame.payload)
-                hwid, active_program = read_application_state(transport, resolved_board_id)
+                hwid, active_mode = read_mode_state(transport, resolved_board_id)
                 capability_ids = decode_capability_ids(capabilities_frame.payload)
                 if capability_ids is None:
                     raise ValueError("CAPABILITIES response has an invalid V0.1 payload")
@@ -289,7 +289,7 @@ class BoardService:
                         for value in capability_ids
                     ),
                     hwid=hwid,
-                    active_program=active_program,
+                    active_mode=active_mode,
                 )
                 save_serial_connections(
                     {resolved_board_id: {"port": port, "baudrate": baudrate}}

@@ -1,19 +1,26 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 milestone - 2026-11-26
 
-- Help reorganised around the board workflow (discover -> boards -> info -> hwid -> update -> MATCH -> listen): `trt` alone prints a Quick Start; `trt --help` groups commands into Board Discovery, Board Management, Monitoring, Development and Information; `trt help` is the full reference with concepts (Board Address, Board ID, HWID, Application ID), MATCH / MISMATCH examples, typical workflow and heartbeat. Help text is plain ASCII.
+Version 1.0.0 milestone (tag `v1.0.0-milestone`): board update workflow and help redesign, validated
+end to end on an STM32 NUCLEO-L073RZ together with TRT-Core. The version string stays `1.0.0`.
+Milestone evidence and open reservations: TRT-core `docs/release-1.0-readiness.md`.
+
+Breaking for scripts that parse output or use STM32 program names (old command names remain as
+hidden aliases).
+
+- **Modes replace programs.** STM32 firmware is `Sources/modes/mode_<ID>_<name>.c`, mode ID = HWID family code (TRT_CHAINING_SPEC_v0.1 D-09), common to all platforms: `mode_0000_base`, `mode_0002_analog`, `mode_0003_keypad`, `mode_0004_encoder`, `mode_0005_display_i2c`, `mode_0006_display_spi`, `mode_0007_led`, `mode_0012_blink` (experimental). New `trt list-modes stm32` and `trt board mode <address>`; `trt list-programs` and `trt board active-program` remain as hidden aliases. The status column and rows say `Mode`; a firmware without a `mode_<ID>_*` name shows `NO MODE` (with the `trt board update` hint). Build/flash take mode names; `artifacts/latest.json` uses the key `mode` (the old `program` key is still read). `trt help` explains modes and Base Mode.
+- Help reorganised around the board workflow (discover -> boards -> info -> hwid -> update -> MATCH -> listen): `trt` alone prints a Quick Start; `trt --help` groups commands into Board Discovery, Board Management, Monitoring, Development and Information; `trt help` is the full reference with concepts (Board Address, Board ID, HWID, Mode ID), MATCH / MISMATCH examples, typical workflow and heartbeat. Help text is plain ASCII.
 - Hidden from the help screens (still callable): `lcd`, `led` (simulated), `protocol` (outdated placeholder), and the simulated `board gpio/pwm/adc/dac/i2c/spi/debug/modules/reset/reboot/status`.
 - User-facing text calls the number in board commands the board *address* (`ADDRESS` / `<address>`; `Addr` column, `Address` row); Board ID now means the carrier-board identifier (not implemented yet).
 - Added `trt listen` and `trt board listen <address>` to passively print asynchronous board messages.
 - Handles the TRT-Core HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`), printed as `Board <address>: HEARTBEAT`.
 - Request/response exchanges now skip event frames while waiting for a reply.
-- Added `trt board hwid <address>` (HWID query `0x000B`) and `trt board update <address> [--check]`: compares the board's HWID with its installed application and, on mismatch, builds, flashes, waits for the reboot and verifies the matching STM32 application.
-- `trt boards`, `trt discover` and `trt board info <address>` show the same status per board: name, firmware + build, installed application, HWID `read / expected` (e.g. `0010 / 0010`) and `MATCH` / `MISMATCH` / `NO HWID` / `NO APP`, plus the `trt board update <address>` hint when action is needed. `trt discover` now prints the `trt boards` table; `trt board info` prints the status block followed by port, revision, protocol, serial and capabilities. Discovery and `board info` also query HWID and ACTIVE_PROGRAM (NACKed by older firmware).
-- STM32 applications are named `app_<HWID>_<name>` (was `program_<name>`); `build`, `flash` and `list-programs` follow the new naming.
+- Added `trt board hwid <address>` (HWID query `0x000B`) and `trt board update <address> [--check]`: compares the board's HWID with its installed mode and, on mismatch, builds, flashes, waits for the reboot and verifies the matching STM32 mode.
+- `trt boards`, `trt discover` and `trt board info <address>` show the same status per board: name, firmware + build, installed mode, HWID `read / expected` (e.g. `0010 / 0010`) and `MATCH` / `MISMATCH` / `NO HWID` / `NO MODE`, plus the `trt board update <address>` hint when action is needed. `trt discover` now prints the `trt boards` table; `trt board info` prints the status block followed by port, revision, protocol, serial and capabilities. Discovery and `board info` also query HWID and ACTIVE_MODE (NACKed by older firmware).
 - `build stm32` / `flash stm32` find `cmake`, `ninja`, `arm-none-eabi-gcc` and `STM32_Programmer_CLI` in an STM32CubeIDE install under `C:\ST` when they are not on `PATH`.
 
-## 1.0.0 - 2026-09-08
+## 1.0.0 - 2026-09-08 (Arduino Uno milestone)
 
 TRT-CLI 1.0.0 is the first hardware-validated release.
 
