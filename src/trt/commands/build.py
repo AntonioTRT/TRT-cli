@@ -102,7 +102,7 @@ def artifact_path(cube_dir: Path, program: str) -> Path:
 
 @app.command("stm32", help="Build an STM32 mode (with TRT-Core) without flashing")
 def build_stm32(
-    program: str = typer.Argument(..., help="Mode name, e.g. mode_0002_analog"),
+    program: str = typer.Argument(..., metavar="MODE", help="Mode name, e.g. mode_0002_analog"),
     project_dir: Path | None = typer.Option(
         None,
         "--project-dir",

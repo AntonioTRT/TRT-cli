@@ -1,5 +1,11 @@
 # TRT Protocol V1 — Specification
 
+> **Design document, not the implemented protocol.** TRT-CLI and TRT-Core implement **TRT V0.1**
+> (TRT-core `docs/protocol-v0.1-wire-format.md`, `docs/command-identifiers.md`). This V1 design shares
+> the frame layout; its command set, debug flags and CLI examples (`trt board board1 ...`) are not
+> implemented. Current CLI usage: [cli-reference.md](cli-reference.md).
+
+
 > **Status: Architecture Definition — No implementation yet.**
 > This document is the single source of truth for all future TRT Protocol development.
 > Commands, transport drivers, and firmware libraries will be built against this specification.

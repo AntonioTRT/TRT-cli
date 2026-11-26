@@ -60,7 +60,9 @@ The repo currently delivers the foundation of that vision:
 - board and capability domain models exist
 - service layer exists for board, discovery, LCD, and LED operations
 - typed protocol operation, request, and response abstractions exist
-- real serial discovery and board info communication are validated against Arduino Uno firmware
+- real serial discovery, board queries, HWID / mode status and the HWID-driven firmware update are
+  validated on an STM32 NUCLEO-L073RZ (Version 1.0.0 milestone, 2026-11-26); discovery and board info
+  were first validated on an Arduino Uno (2026-09-08)
 - mock transport support remains available only as explicit test/support infrastructure
 
 The remaining parts are intentionally deferred and remain future work:
@@ -76,21 +78,23 @@ The remaining parts are intentionally deferred and remain future work:
 
 | Board Type | Status | Notes |
 |---|---|---|
-| TRT_CORE | Planned | Reference TRT board |
-| Arduino | Implemented | Arduino Uno validated over COM4 |
+| TRT carrier (STM32G474) | Planned | Reference TRT carrier board (schematics done) |
+| STM32 NUCLEO-L073RZ | Validated | Development carrier, address 201: discovery, HWID, modes, `trt board update` |
+| Arduino | Implemented | Arduino Uno, address 101; discovery validated 2026-09-08; no HWID / modes yet |
+| ESP32 | Implemented | Address 301; not validated on hardware |
 | RP2040 | Planned | Common embedded target |
-| Simulator | Planned | Mock in-process device |
+| Simulator | Implemented | TRT-core in-process board for protocol tests |
 | Custom | Planned | Any board implementing the TRT protocol |
 
 ### Transports
 
 | Transport | Status | Notes |
 |---|---|---|
-| Serial / COM | Implemented | Arduino Uno on COM4 |
+| Serial / COM | Implemented | STM32 (ST-LINK virtual COM port) and Arduino Uno |
 | USB | Planned | Future direct USB CDC transport |
 | CAN | Planned | Future CAN bus support |
 | TCP | Planned | Future Ethernet transport |
-| Mock | Implemented | Current CLI behavior |
+| Mock | Implemented | Tests and the simulated (hidden) commands |
 
 ---
 

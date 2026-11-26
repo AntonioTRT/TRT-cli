@@ -48,7 +48,7 @@ def info() -> None:
 
     table.add_row("Protocol Name",    "TRT Protocol")
     table.add_row("Version",          _PROTOCOL_VERSION)
-    table.add_row("Status",           "[yellow]Planned — not yet implemented[/yellow]")
+    table.add_row("Status",           "[yellow]Planned - not yet implemented[/yellow]")
     table.add_row("Transport",        "USB CDC (USB Full-Speed, CDC-ACM class)")
     table.add_row("Future Transports","CAN bus, Ethernet / TCP")
     table.add_row("Encoding",         "Binary, little-endian")
@@ -66,14 +66,14 @@ def info() -> None:
     console.print()
     console.print(
         "  [bold]Planned packet structure:[/bold]\n"
-        "  [dim]┌─────────────────────────────────────────┐[/dim]\n"
-        "  [dim]│[/dim]  HEADER   [dim]│[/dim] 2 bytes [dim]│[/dim] Magic 0x54 0x52 ([cyan]TR[/cyan])  [dim]│[/dim]\n"
-        "  [dim]│[/dim]  VERSION  [dim]│[/dim] 1 byte  [dim]│[/dim] Protocol version        [dim]│[/dim]\n"
-        "  [dim]│[/dim]  CMD      [dim]│[/dim] 1 byte  [dim]│[/dim] Command opcode          [dim]│[/dim]\n"
-        "  [dim]│[/dim]  LENGTH   [dim]│[/dim] 2 bytes [dim]│[/dim] Payload length          [dim]│[/dim]\n"
-        "  [dim]│[/dim]  PAYLOAD  [dim]│[/dim] N bytes [dim]│[/dim] Command data            [dim]│[/dim]\n"
-        "  [dim]│[/dim]  CRC      [dim]│[/dim] 2 bytes [dim]│[/dim] CRC-16/CCITT            [dim]│[/dim]\n"
-        "  [dim]└─────────────────────────────────────────┘[/dim]\n"
+        "  [dim]+-----------------------------------------+[/dim]\n"
+        "  [dim]|[/dim]  HEADER   [dim]|[/dim] 2 bytes [dim]|[/dim] Magic 0x54 0x52 ([cyan]TR[/cyan])  [dim]|[/dim]\n"
+        "  [dim]|[/dim]  VERSION  [dim]|[/dim] 1 byte  [dim]|[/dim] Protocol version        [dim]|[/dim]\n"
+        "  [dim]|[/dim]  CMD      [dim]|[/dim] 1 byte  [dim]|[/dim] Command opcode          [dim]|[/dim]\n"
+        "  [dim]|[/dim]  LENGTH   [dim]|[/dim] 2 bytes [dim]|[/dim] Payload length          [dim]|[/dim]\n"
+        "  [dim]|[/dim]  PAYLOAD  [dim]|[/dim] N bytes [dim]|[/dim] Command data            [dim]|[/dim]\n"
+        "  [dim]|[/dim]  CRC      [dim]|[/dim] 2 bytes [dim]|[/dim] CRC-16/CCITT            [dim]|[/dim]\n"
+        "  [dim]+-----------------------------------------+[/dim]\n"
     )
 
     console.print(
@@ -91,5 +91,5 @@ def version() -> None:
     console.print()
     console.print(f"  [bold cyan]TRT Protocol[/bold cyan]")
     console.print(f"  Version : [yellow]{_PROTOCOL_VERSION}[/yellow]")
-    console.print(f"  Status  : [dim]Planned — not yet implemented[/dim]")
+    console.print(f"  Status  : [dim]Planned - not yet implemented[/dim]")
     console.print()

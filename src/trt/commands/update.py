@@ -45,7 +45,7 @@ def run_update(
     method  = detect_install_method()
 
     console.print()
-    console.print("  [bold]Checking for updates…[/bold]")
+    console.print("  [bold]Checking for updates...[/bold]")
     console.print(f"  Current version : [cyan]{current}[/cyan]")
     console.print(f"  Install method  : [dim]{method.value}[/dim]")
     console.print(f"  Checking         : [dim]GitHub releases (AntonioTRT/TRT-cli)[/dim]")
@@ -63,7 +63,7 @@ def run_update(
                 f"Latest: [cyan]{result.latest_version}[/cyan]"
             )
         else:
-            console.print("  [bold green]✓ No update available.[/bold green]")
+            console.print("  [bold green]No update available.[/bold green]")
             if result.error_message:
                 console.print(f"  [dim]{result.error_message}[/dim]")
         console.print()
@@ -111,7 +111,7 @@ def run_update(
 
 def _do_install(upgrade_command: str) -> None:
     """Execute the install step and report results."""
-    console.print("  [bold]Installing update…[/bold]")
+    console.print("  [bold]Installing update...[/bold]")
     console.print()
 
     install_result = install_update()

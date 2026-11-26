@@ -51,7 +51,7 @@ def test_stm32(
         "-p",
         help="ST-LINK virtual COM port; scans serial ports when omitted",
     ),
-    board_id: str = typer.Option(_BOARD_ID, "--board-id", help="TRT board id (default: 0x0002)"),
+    board_id: str = typer.Option(_BOARD_ID, "--board-id", help="Board address to test: 201 for the current STM32 firmware, 0x0002 (default) for the legacy PlatformIO image"),
 ) -> None:
     ports = [port] if port else SerialTransport.available_ports()
     if not ports:

@@ -135,19 +135,18 @@ The domain layer remains framework-independent and portable.
 
 ## Current state vs future state
 
-### Implemented today
+### Implemented today (Version 1.0.0 milestone, 2026-11-26)
 
-- Typer CLI with rich output
-- thin command adapters for board, discovery, LCD, and LED commands
-- board service layer
-- LED and LCD service layers
-- typed protocol operation, request, and response models
-- protocol client abstraction
-- real serial discovery over available COM ports
-- real `trt board info 101` transaction over COM4
-- mock transport retained as explicit test/support infrastructure
-- capability service
-- passive monitoring: `trt listen` and `trt board listen <id>` (heartbeat events)
+- Typer CLI with Rich output; three help levels (`trt`, `trt --help`, `trt help`)
+- real serial discovery over all COM ports (TRT V0.1 frames), validated on STM32 and Arduino Uno
+- board queries (`board_query_service.py`), including HWID (`0x000B`) and ACTIVE_MODE (`0x000A`)
+- one board status summary shared by `boards`, `discover`, `board info` and `board update`
+  (`board_summary.py`, rendered by `commands/board_view.py`; mode and HWID rules in `core/modes.py`)
+- HWID-driven firmware update (`board_update_service.py`) on top of the STM32 build and flash
+  commands (`commands/build.py`, `commands/flash.py`)
+- passive monitoring: `trt listen` and `trt board listen <address>` (heartbeat events)
+- mock transport and the simulated LCD / LED / peripheral commands, kept as test and support
+  infrastructure and hidden from the help screens
 
 ### Planned for the future
 
@@ -157,7 +156,7 @@ The domain layer remains framework-independent and portable.
 - TCP transport
 - broader firmware capability coverage
 
-TRT-CLI 1.0.0 is no longer mock-only: board discovery and numeric board info can use real TRT protocol frames against Arduino Uno firmware.
+Discovery, queries, the status view and the update workflow use real TRT protocol frames; they were validated end to end on an STM32 NUCLEO-L073RZ.
 
 ---
 
@@ -192,8 +191,8 @@ TRT-Core boards emit a HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`) about on
 Handling is passive and sits beside the request/response path:
 
 ```text
-trt listen / trt board listen <id>
-    -> commands/listen.py            (arguments, output: "Board <id>: HEARTBEAT")
+trt listen / trt board listen <address>
+    -> commands/listen.py            (arguments, output: "Board <address>: HEARTBEAT")
         -> ListenService             (opens serial ports, one reader thread per port, board filter)
             -> FrameReader           (resynchronising frame parser)
                 -> serial port
@@ -278,9 +277,9 @@ The following remain outside the current 1.0.0 hardware-validated slice:
 
 - real CAN and TCP transport adapters
 - full USB CDC implementation beyond current COM-port serial transport
-- full command coverage beyond discovery, board info, firmware version, build ID, and capabilities
-
-These do not change the 1.0.0 milestone: TRT-CLI has a validated end-to-end Arduino Uno protocol transaction.
+- real peripheral commands (GPIO, PWM, ADC, DAC, I2C, SPI, LCD, LED) once the firmware supports them
+- `trt board update` for Arduino and ESP32 (today STM32 over SWD only)
+- GitHub release checking in `trt update`
 
 
 ---
@@ -288,23 +287,22 @@ These do not change the 1.0.0 milestone: TRT-CLI has a validated end-to-end Ardu
 ## Repository Map
 
 ```
-trt-cli/           This repository
-trt-protocol/      Binary message protocol (future)
-trt-core/          C/C++ firmware library (future)
-trt-modules/       Firmware peripheral drivers (future)
+TRT-cli/           This repository (host CLI)
+TRT-core/          Firmware runtime, board runtimes, STM32 mode project, protocol V0.1 docs
+trt_docs/          Onboarding documentation (Spanish) and system deliverables
 ```
 
 ## Protocol Specification
 
-The TRT Protocol V1 frame structure, field definitions, transport strategy, open questions, and design rationale are fully documented in:
-
-**[docs/trt-protocol.md](trt-protocol.md)**
+The implemented protocol is **TRT V0.1**, specified in TRT-core (`docs/protocol-v0.1-wire-format.md`,
+`docs/command-identifiers.md`). [docs/trt-protocol.md](trt-protocol.md) is an earlier, broader design
+document (V1); it shares the frame layout but its command set and CLI examples are not the implemented ones.
 
 Key facts:
 - Frame: `SYNC | VERSION | FLAGS | BOARD_ID | SEQ_ID | COMMAND | LENGTH | PAYLOAD | CRC16`
 - Transport-agnostic: same frame over USB CDC, CAN FD, TCP/IP
-- V1 transport: USB CDC only
-- Supports chunked transfers for firmware updates and large payloads
+- Implemented transport: serial (USB CDC / ST-LINK virtual COM port), 115200 baud
+- CRC16 field present but sent as 0x0000 and not validated (V0.1)
 - `future-protocol.md` is superseded by `trt-protocol.md` for design decisions
 
 See [docs/vision.md](vision.md) for the full roadmap.

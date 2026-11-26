@@ -97,7 +97,7 @@ def board_reboot(
 
 @board_app.command("capabilities", rich_help_panel=QUERY_PANEL, help="List the capabilities the board advertised at discovery")
 def board_capabilities(
-    board_id: str = typer.Argument(..., help="Board identifier"),
+    board_id: str = typer.Argument(..., metavar="ADDRESS", help="Board address shown by trt boards, e.g. 201"),
 ) -> None:
     service = BoardService()
     if board_id.isdigit():

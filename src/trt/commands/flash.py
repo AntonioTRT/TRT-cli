@@ -35,7 +35,7 @@ app = typer.Typer(help="Flash firmware to supported boards", no_args_is_help=Tru
 )
 def flash_stm32(
     program: str | None = typer.Argument(
-        None, help="Mode name, e.g. mode_0012_blink; omit for the most recent build"
+        None, metavar="[MODE]", help="Mode name, e.g. mode_0002_analog; omit for the most recent build"
     ),
     port: str | None = typer.Option(None, "--port", help="ST-LINK virtual COM port (--platformio only)"),
     project_dir: Path | None = typer.Option(
