@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import re
+import os
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -12,23 +12,57 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from trt.core.applications import APP_NAME as _PROGRAM_NAME
+from trt.core.applications import app_hwid
+
 console = Console()
 app = typer.Typer(help="Build board firmware without flashing", no_args_is_help=True)
 
 PROGRAMS_SUBDIR = Path("Sources") / "programs"
 ARTIFACTS_SUBDIR = Path("artifacts")
 LATEST_MANIFEST = "latest.json"
-_PROGRAM_NAME = re.compile(r"^program_[a-z0-9_]+$")
+# Where STM32CubeIDE bundles its toolchain, searched when a tool is not on PATH.
+CUBEIDE_ROOTS = (Path("C:/ST"), Path("C:/Program Files/STMicroelectronics"))
 
 
 def list_programs(cube_dir: Path) -> list[str]:
-    """Application names available in the CubeIDE project (Sources/programs/program_*.c)."""
-    return sorted(path.stem for path in (cube_dir / PROGRAMS_SUBDIR).glob("program_*.c"))
+    """Application names available in the CubeIDE project (Sources/programs/app_<HWID>_<name>.c)."""
+    return sorted(
+        path.stem for path in (cube_dir / PROGRAMS_SUBDIR).glob("app_*.c") if _PROGRAM_NAME.match(path.stem)
+    )
 
 
 def program_macro(program: str) -> str:
-    """program_pulse_train -> PROGRAM_PULSE_TRAIN (the ID defined in app_selector.h)."""
+    """app_0002_analog_family -> APP_0002_ANALOG_FAMILY (the ID defined in app_selector.h)."""
     return program.upper()
+
+
+def app_for_hwid(cube_dir: Path, hwid: int) -> str | None:
+    """The application that matches a HWID, or None. Two files with the same HWID are an error."""
+    matches = [program for program in list_programs(cube_dir) if app_hwid(program) == hwid]
+    if len(matches) > 1:
+        raise ValueError(f"Several applications claim HWID {hwid}: {', '.join(matches)}")
+    return matches[0] if matches else None
+
+
+def cubeide_tool_dirs() -> list[Path]:
+    """tools/bin directories of the STM32CubeIDE plugins (toolchain, CMake, Ninja, CubeProgrammer)."""
+    dirs: list[Path] = []
+    for root in CUBEIDE_ROOTS:
+        if root.is_dir():
+            dirs.extend(sorted(root.glob("STM32CubeIDE*/STM32CubeIDE/plugins/*/tools/bin"), reverse=True))
+    return dirs
+
+
+def ensure_stm32_tools(tools: tuple[str, ...]) -> list[str]:
+    """Put STM32CubeIDE's bundled tools on PATH when they are missing; return the tools still missing."""
+    missing = [tool for tool in tools if shutil.which(tool) is None]
+    if not missing:
+        return []
+    for directory in cubeide_tool_dirs():
+        if any((directory / f"{tool}.exe").is_file() or (directory / tool).is_file() for tool in missing):
+            os.environ["PATH"] = f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"
+    return [tool for tool in tools if shutil.which(tool) is None]
 
 
 def resolve_cubeide_dir(project_dir: Path | None) -> Path:
@@ -68,7 +102,7 @@ def artifact_path(cube_dir: Path, program: str) -> Path:
 
 @app.command("stm32", help="Build an STM32 application (with TRT-Core) without flashing")
 def build_stm32(
-    program: str = typer.Argument(..., help="Application name, e.g. program_blink"),
+    program: str = typer.Argument(..., help="Application name, e.g. app_0002_analog_family"),
     project_dir: Path | None = typer.Option(
         None,
         "--project-dir",
@@ -83,12 +117,19 @@ def build_stm32(
     available = list_programs(cube_dir)
     if not _PROGRAM_NAME.match(program) or program not in available:
         raise typer.BadParameter(f"Unknown program '{program}'. Available: {', '.join(available) or 'none'}.")
+    build_stm32_app(cube_dir, program)
+    console.print("  Flash it with: trt flash stm32\n")
 
-    missing = [tool for tool in ("cmake", "arm-none-eabi-gcc") if shutil.which(tool) is None]
+
+def build_stm32_app(cube_dir: Path, program: str) -> Path:
+    """Build one application (TRT-Core included) and store it as an artifact; returns the stored .elf."""
+    ensure_stm32_tools(("ninja",))
+    missing = ensure_stm32_tools(("cmake", "arm-none-eabi-gcc"))
     if missing:
         console.print(
             f"\n  [red]Missing build tools on PATH:[/red] {', '.join(missing)}. "
-            "Install/enable the STM32CubeIDE toolchain (cmake, arm-none-eabi-gcc).\n"
+            "Install STM32CubeIDE (its bundled tools are found under C:/ST) "
+            "or put cmake and arm-none-eabi-gcc on PATH.\n"
         )
         raise typer.Exit(1)
 
@@ -124,4 +165,4 @@ def build_stm32(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
     console.print(f"\n  [bold green]Built {program}.[/bold green] Artifact: {stored}")
-    console.print("  Flash it with: trt flash stm32\n")
+    return stored

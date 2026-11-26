@@ -5,7 +5,7 @@ Scope:
     the developer's machine.  It is entirely separate from board firmware
     updates, which will be handled by:
 
-        trt board <id> update   (future command)
+        trt board update <address>   (board firmware, matched to the HWID)
 
 Usage:
     trt update                  Check for a newer version

@@ -11,7 +11,7 @@ from trt.commands.build import list_programs, resolve_cubeide_dir
 app = typer.Typer(help="List the applications available for a board family", no_args_is_help=True)
 
 
-@app.command("stm32", help="List STM32 applications (Sources/programs/program_*.c)")
+@app.command("stm32", help="List STM32 applications (Sources/programs/app_<HWID>_<name>.c)")
 def list_programs_stm32(
     project_dir: Path | None = typer.Option(
         None,

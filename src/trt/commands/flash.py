@@ -15,6 +15,7 @@ from trt.commands.build import (
     ARTIFACTS_SUBDIR,
     LATEST_MANIFEST,
     artifact_path,
+    ensure_stm32_tools,
     list_programs,
     resolve_cubeide_dir,
     run_checked,
@@ -28,13 +29,13 @@ app = typer.Typer(help="Flash firmware to supported boards", no_args_is_help=Tru
     "stm32",
     help=(
         "Flash a previously built STM32 firmware (see: trt build stm32). With no name, flashes the "
-        "most recently built firmware; with a name (trt flash stm32 program_blink), that application's "
+        "most recently built firmware; with a name (trt flash stm32 app_0001_blink), that application's "
         "build. Never builds."
     ),
 )
 def flash_stm32(
     program: str | None = typer.Argument(
-        None, help="Application name, e.g. program_blink; omit for the most recent build"
+        None, help="Application name, e.g. app_0001_blink; omit for the most recent build"
     ),
     port: str | None = typer.Option(None, "--port", help="ST-LINK virtual COM port (--platformio only)"),
     project_dir: Path | None = typer.Option(
@@ -56,7 +57,13 @@ def flash_stm32(
 
     cube_dir = resolve_cubeide_dir(project_dir)
     elf, name = _select_artifact(cube_dir, program)
+    flash_stm32_elf(elf, name)
+    console.print()
 
+
+def flash_stm32_elf(elf: Path, name: str) -> None:
+    """Flash an .elf over SWD, verify it and reset the board (-rst) so the new image starts."""
+    ensure_stm32_tools(("STM32_Programmer_CLI",))
     programmer = shutil.which("STM32_Programmer_CLI")
     if programmer is None:
         console.print(
@@ -67,7 +74,7 @@ def flash_stm32(
 
     console.print(f"  [cyan]Flashing[/cyan] {name}: {elf}")
     run_checked([programmer, "-c", "port=SWD", "-w", str(elf), "-v", "-rst"], "Flashing failed")
-    console.print(f"\n  [bold green]{name} flashed successfully.[/bold green]\n")
+    console.print(f"\n  [bold green]{name} flashed successfully.[/bold green]")
 
 
 def _select_artifact(cube_dir: Path, program: str | None) -> tuple[Path, str]:
@@ -83,7 +90,7 @@ def _select_artifact(cube_dir: Path, program: str | None) -> tuple[Path, str]:
         name, elf = program, artifact_path(cube_dir, program)
 
     if not elf.is_file():
-        built = sorted(p.name for p in (cube_dir / ARTIFACTS_SUBDIR).glob("program_*") if p.is_dir())
+        built = sorted(p.name for p in (cube_dir / ARTIFACTS_SUBDIR).glob("app_*") if p.is_dir())
         hint = f"Built: {', '.join(built)}." if built else f"Available programs: {', '.join(list_programs(cube_dir))}."
         console.print(f"\n  [red]No built firmware for {name}.[/red] {hint} Run: trt build stm32 {name}\n")
         raise typer.Exit(1)

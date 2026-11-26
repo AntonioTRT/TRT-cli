@@ -3,7 +3,9 @@
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from trt.commands.board_view import render_boards_table
 from trt.services.board_discovery_service import BoardDiscoveryService
+from trt.services.board_summary import summary_from_board
 
 console = Console()
 
@@ -23,17 +25,7 @@ def run_discover() -> None:
 
     console.print(f"  [bold green]Discovery complete.[/bold green]  Found [cyan]{len(boards)}[/cyan] board(s).\n")
 
-    for board in boards:
-        ident = board.identity
-        board_type = board.metadata.get("board_type", ident.board_type.value)
-        build_id = board.metadata.get("build_id", ident.serial or "-")
-        transport_str = str(board.transport) if board.transport else "-"
-        console.print(
-            f"  [cyan]{ident.board_id}[/cyan]  "
-            f"[magenta]{board_type}[/magenta]  "
-            f"fw=[white]{ident.firmware}[/white]  "
-            f"build=[white]{build_id}[/white]  "
-            f"via=[yellow]{transport_str}[/yellow]"
-        )
+    if boards:
+        render_boards_table(console, [summary_from_board(board) for board in boards])
 
     console.print("\n  [dim]Real serial discovery via TRT protocol.[/dim]\n")

@@ -92,7 +92,8 @@ class FakeStm32Transport:
             0x0006: (0x8003, bytes((4, 0, 1, 0, 2, 0, 5, 0, 9))),
             0x0007: (0x8003, b"000123"),
         }
-        response_id, payload = responses[command]
+        # Firmware before HWID/ACTIVE_PROGRAM answers NACK ERROR_UNSUPPORTED_COMMAND.
+        response_id, payload = responses.get(command, (0x8002, b"\x00\x02"))
         return self.Frame(
             board_id=int(board_id, 0),
             sequence_id=len(self.commands),
@@ -261,7 +262,7 @@ def _cubeide_project(tmp_path: Path) -> Path:
     programs = cube_dir / "Sources" / "programs"
     programs.mkdir(parents=True)
     (cube_dir / "CMakeLists.txt").write_text("project(trt01)\n", encoding="utf-8")
-    for name in ("program_blink", "program_pulse_train"):
+    for name in ("app_0001_blink", "app_0002_analog_family"):
         (programs / f"{name}.c").write_text("", encoding="utf-8")
     return cube_dir
 
@@ -279,6 +280,7 @@ def _fake_toolchain(monkeypatch: pytest.MonkeyPatch, tools: set[str]) -> list[li
     monkeypatch.setattr(build.subprocess, "run", fake_run)
     monkeypatch.setattr(flash.subprocess, "run", fake_run)
     monkeypatch.setattr(build.shutil, "which", lambda tool: tool if tool in tools else None)
+    monkeypatch.setattr(build, "cubeide_tool_dirs", lambda: [])
     monkeypatch.setattr(flash.shutil, "which", lambda tool: tool if tool in tools else None)
     return called
 
@@ -298,32 +300,32 @@ def test_build_stores_artifact_and_does_not_flash(
     called = _fake_toolchain(
         monkeypatch, {"cmake", "arm-none-eabi-gcc", "ninja", "STM32_Programmer_CLI"}
     )
-    result = _build("program_pulse_train", tmp_path)
+    result = _build("app_0002_analog_family", tmp_path)
     assert result.exit_code == 0, result.stdout
     configure, build_cmd = called
-    assert "-DACTIVE_PROGRAM=PROGRAM_PULSE_TRAIN" in configure
+    assert "-DACTIVE_PROGRAM=APP_0002_ANALOG_FAMILY" in configure
     assert configure[1:3] == ["-G", "Ninja"]
     assert build_cmd[:2] == ["cmake", "--build"]
     assert all("STM32_Programmer_CLI" not in command[0] for command in called)
-    stored = cube_dir / "artifacts" / "program_pulse_train" / "program_pulse_train.elf"
-    assert stored.read_text(encoding="utf-8") == "elf:program_pulse_train"
+    stored = cube_dir / "artifacts" / "app_0002_analog_family" / "app_0002_analog_family.elf"
+    assert stored.read_text(encoding="utf-8") == "elf:app_0002_analog_family"
     manifest = json.loads((cube_dir / "artifacts" / "latest.json").read_text(encoding="utf-8"))
-    assert manifest["program"] == "program_pulse_train"
+    assert manifest["program"] == "app_0002_analog_family"
 
 
 def test_build_rejects_unknown_program(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _cubeide_project(tmp_path)
     called = _fake_toolchain(monkeypatch, {"cmake", "arm-none-eabi-gcc"})
-    result = _build("program_nope", tmp_path)
+    result = _build("app_9999_nope", tmp_path)
     assert result.exit_code != 0
-    assert "program_blink" in result.output
+    assert "app_0001_blink" in result.output
     assert called == []
 
 
 def test_build_reports_missing_toolchain(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _cubeide_project(tmp_path)
     called = _fake_toolchain(monkeypatch, set())
-    result = _build("program_blink", tmp_path)
+    result = _build("app_0001_blink", tmp_path)
     assert result.exit_code == 1
     assert "Missing build tools" in result.stdout
     assert called == []
@@ -334,14 +336,14 @@ def test_flash_defaults_to_most_recent_build(monkeypatch: pytest.MonkeyPatch, tm
     called = _fake_toolchain(
         monkeypatch, {"cmake", "arm-none-eabi-gcc", "STM32_Programmer_CLI"}
     )
-    assert _build("program_blink", tmp_path).exit_code == 0
-    assert _build("program_pulse_train", tmp_path).exit_code == 0
+    assert _build("app_0001_blink", tmp_path).exit_code == 0
+    assert _build("app_0002_analog_family", tmp_path).exit_code == 0
     called.clear()
     result = _flash(tmp_path)
     assert result.exit_code == 0, result.stdout
     assert len(called) == 1
     assert called[0][0] == "STM32_Programmer_CLI"
-    assert str(cube_dir / "artifacts" / "program_pulse_train" / "program_pulse_train.elf") in called[0]
+    assert str(cube_dir / "artifacts" / "app_0002_analog_family" / "app_0002_analog_family.elf") in called[0]
 
 
 def test_flash_named_program_uses_that_build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -349,12 +351,12 @@ def test_flash_named_program_uses_that_build(monkeypatch: pytest.MonkeyPatch, tm
     called = _fake_toolchain(
         monkeypatch, {"cmake", "arm-none-eabi-gcc", "STM32_Programmer_CLI"}
     )
-    assert _build("program_blink", tmp_path).exit_code == 0
-    assert _build("program_pulse_train", tmp_path).exit_code == 0
+    assert _build("app_0001_blink", tmp_path).exit_code == 0
+    assert _build("app_0002_analog_family", tmp_path).exit_code == 0
     called.clear()
-    result = _flash(tmp_path, "program_blink")
+    result = _flash(tmp_path, "app_0001_blink")
     assert result.exit_code == 0, result.stdout
-    assert str(cube_dir / "artifacts" / "program_blink" / "program_blink.elf") in called[0]
+    assert str(cube_dir / "artifacts" / "app_0001_blink" / "app_0001_blink.elf") in called[0]
 
 
 def test_flash_without_any_build_points_to_build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -369,16 +371,16 @@ def test_flash_without_any_build_points_to_build(monkeypatch: pytest.MonkeyPatch
 def test_flash_unbuilt_program_does_not_build(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _cubeide_project(tmp_path)
     called = _fake_toolchain(monkeypatch, {"cmake", "arm-none-eabi-gcc", "STM32_Programmer_CLI"})
-    result = _flash(tmp_path, "program_blink")
+    result = _flash(tmp_path, "app_0001_blink")
     assert result.exit_code == 1
-    assert "trt build stm32 program_blink" in result.stdout
+    assert "trt build stm32 app_0001_blink" in result.stdout
     assert called == []
 
 
 def test_flash_requires_programmer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _cubeide_project(tmp_path)
     _fake_toolchain(monkeypatch, {"cmake", "arm-none-eabi-gcc"})
-    assert _build("program_blink", tmp_path).exit_code == 0
+    assert _build("app_0001_blink", tmp_path).exit_code == 0
     result = _flash(tmp_path)
     assert result.exit_code == 1
     assert "STM32_Programmer_CLI not found" in result.stdout
@@ -403,7 +405,8 @@ def test_discovery_handshakes_and_persists_stm32_port(
     assert board.transport is not None
     assert board.transport.port == "COM7"
     assert board.transport.baudrate == 115200
-    assert FakeStm32Transport.commands == [1, 3, 4, 6, 2, 7]
+    assert FakeStm32Transport.commands == [1, 3, 4, 6, 2, 7, 0x000B, 0x000A]
+    assert board.metadata["hwid"] == "" and board.metadata["active_program"] == ""
     assert FakeStm32Transport.requested_baudrates == [115200]
     assert board_cache.load_serial_connections() == {
         "2": {"port": "COM7", "baudrate": 115200}
@@ -427,23 +430,25 @@ def test_board_info_resolves_cached_stm32_port_and_shows_v01_data(
 
     assert result.exit_code == 0, result.stdout
     assert "NUCLEO-L073RZ" in result.stdout
-    assert "BOARD_VERSION" in result.stdout
-    assert "CAPABILITIES" in result.stdout
+    assert "Revision" in result.stdout and "unspecified" in result.stdout
+    assert "Capabilities" in result.stdout
     assert "SYSTEM, GPIO, DAC, LED" in result.stdout
-    assert FakeStm32Transport.commands == [1, 3, 4, 6, 2, 7]
+    assert "NO HWID" in result.stdout  # this firmware predates HWID support
+    assert FakeStm32Transport.commands == [1, 3, 4, 6, 2, 7, 0x000B, 0x000A]
     assert FakeStm32Transport.requested_baudrates == [115200]
 
 
 def test_list_programs_discovers_every_program_file(tmp_path: Path) -> None:
     cube_dir = _cubeide_project(tmp_path)
-    (cube_dir / "Sources" / "programs" / "program_encoder.c").write_text("", encoding="utf-8")
+    (cube_dir / "Sources" / "programs" / "app_0004_encoder_family.c").write_text("", encoding="utf-8")
     (cube_dir / "Sources" / "programs" / "helper.c").write_text("", encoding="utf-8")
-    (cube_dir / "Sources" / "programs" / "program_notes.txt").write_text("", encoding="utf-8")
+    (cube_dir / "Sources" / "programs" / "app_misnamed.c").write_text("", encoding="utf-8")
+    (cube_dir / "Sources" / "programs" / "app_0005_notes.txt").write_text("", encoding="utf-8")
     result = runner.invoke(
         app, ["list-programs", "stm32", "--project-dir", str(tmp_path / "TRT-stm32")]
     )
     assert result.exit_code == 0, result.output
-    assert result.stdout.split() == ["program_blink", "program_encoder", "program_pulse_train"]
+    assert result.stdout.split() == ["app_0001_blink", "app_0002_analog_family", "app_0004_encoder_family"]
 
 
 def test_list_programs_fails_when_no_programs(tmp_path: Path) -> None:

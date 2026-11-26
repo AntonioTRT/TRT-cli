@@ -4,7 +4,7 @@ Responsible for checking GitHub releases and coordinating CLI self-updates.
 The CLI application (trt-cli) and board firmware updates are INDEPENDENT:
 
     trt update            → updates the trt-cli Python package on this machine
-    trt board <id> update → updates firmware on a connected board (future)
+    trt board update <address> -> installs the firmware that matches the board HWID
 
 This module handles only the CLI side.
 

@@ -16,7 +16,7 @@ console = Console()
 def run_listen(board_id: str | None = None) -> None:
     """Print every message received from TRT boards until Ctrl+C.
 
-    Used by ``trt listen`` (all boards) and ``trt board <id> listen`` (one board).
+    Used by ``trt listen`` (all boards) and ``trt board listen <address>`` (one board).
     """
     wanted: int | None = None
     if board_id is not None:

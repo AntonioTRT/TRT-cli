@@ -2,6 +2,51 @@
 
 Complete reference for all `trt` commands.
 
+## Getting started
+
+```text
+trt discover                  Discover TRT boards
+trt boards                    Show boards: application, HWID read / expected, MATCH
+trt board info <address>      One board in detail
+trt board hwid <address>      Which daughter board is connected
+trt board active-program <address>   Which application is installed
+trt board update <address>    If MISMATCH: build, flash, reboot, verify MATCH
+trt listen                    Monitor heartbeat and events (Ctrl+C)
+```
+
+Three help levels, from short to complete:
+
+| Command | Shows |
+|---|---|
+| `trt` | Quick Start: the five workflow commands |
+| `trt --help` | All visible commands grouped: Board Discovery, Board Management, Monitoring, Development, Information |
+| `trt help` | Full reference: concepts, reading MATCH / MISMATCH, typical workflow, heartbeat, commands |
+
+## Concepts
+
+| Term | Meaning | Example |
+|---|---|---|
+| Board Address | How TRT talks to a board: the number in every command (`<address>`). Not a hardware identifier. | `201` |
+| Board ID | Identifies the carrier board, to select its board profile. **Not implemented yet** (planned: ADC resistor divider). Today: name, type, revision in `trt board info`. | `NUCLEO-L073RZ` |
+| HWID | Identifies the daughter board, read from ID pins D6..D3 at boot. Decides the required application. | `0010` (= 2) |
+| Application ID | The installed firmware application, `app_<HWID>_<name>`; the digits are the HWID it expects. | `app_0002_analog_family` |
+
+Status: `HWID 0010 / 0010 MATCH` (read from hardware / expected by the installed application)
+means nothing to do; `0010 / 0000 MISMATCH` means run `trt board update <address>`.
+Details: TRT-core `docs/hwid-and-firmware-update.md`.
+
+## Commands not shown in the help screens
+
+Still callable, but hidden from `trt`, `trt --help`, `trt help` and `trt board --help`
+because they do not talk to hardware or are outdated:
+
+| Command | Reason |
+|---|---|
+| `trt lcd ...`, `trt led ...` | Simulated (mock): print "(mock: no hardware connected)" |
+| `trt protocol info / version` | Outdated placeholder: describes a planned packet format, not the real TRT v0.1 protocol (see TRT-core `docs/protocol-v0.1-wire-format.md`) |
+| `trt board gpio / pwm / adc / dac / i2c / spi / debug / modules / reset / reboot` | Simulated (mock), no firmware support |
+| `trt board status` | Reads the discovery cache, which always says `ready`; use `trt boards` / `trt board info` |
+
 ---
 
 ## Global Options
@@ -16,20 +61,21 @@ trt --show-completion       Show completion script
 
 ```powershell
 trt list-programs stm32 [--project-dir PATH]
-trt board <id|name|type|revision|version|build-id|runtime|active-program|uptime|transport> <board-id> [--port COM5]
-trt build stm32 <program> [--project-dir PATH]
-trt flash stm32 [program] [--project-dir PATH]
+trt board <id|name|type|revision|version|build-id|runtime|active-program|hwid|uptime|transport> <address> [--port COM5]
+trt board update <address> [--check] [--port COM5] [--project-dir PATH]
+trt build stm32 <app> [--project-dir PATH]
+trt flash stm32 [app] [--project-dir PATH]
 trt flash stm32 --platformio [--port COM5] [--project-dir PATH]
 trt stm32 test [--port COM5] [--board-id 0x0002]
 trt board info 2 [--port COM5]
 ```
 
-`board <query> <board-id>` are read-only queries; each asks the board for one value it
+`board <query> <address>` are read-only queries; each asks the board for one value it
 already knows and prints it (`--port` overrides the saved/discovered port):
 
 | Command | Source |
 |---|---|
-| `board id` | board ID in the reply frame |
+| `board id` | board address in the reply frame |
 | `board name` | INFO field 0x01 |
 | `board type` | INFO field 0x06 (board family: Arduino, STM32, ESP32, ...) |
 | `board revision` | BOARD_VERSION |
@@ -37,6 +83,7 @@ already knows and prints it (`--port` overrides the saved/discovered port):
 | `board build-id` | BUILD_ID |
 | `board runtime` | RUNTIME (`RUNNING`) |
 | `board active-program` | ACTIVE_PROGRAM |
+| `board hwid` | HWID (0x000B): daughter-board hardware ID read from the ID pins |
 | `board uptime` | UPTIME (`DD HH:MM:SS.mmm (N ms)`) |
 | `board transport` | the host's connection (port and baud rate); no firmware query |
 
@@ -53,6 +100,7 @@ already knows and prints it (`--port` overrides the saved/discovered port):
 | `board id` | Confirms which ID the board replies with | live, reply header | You already pass the ID in; `trt boards` lists IDs |
 | `board runtime` | TRT-Core runtime state | live, RUNTIME | Currently only `RUNNING` |
 | `board active-program` | Application on the board | live, ACTIVE_PROGRAM | Unique |
+| `board hwid` | Daughter-board hardware ID | live, HWID | Compared with the application by `board update` |
 | `board uptime` | Time since boot | live, UPTIME | Unique |
 | `board transport` | How the host reaches the board | host, saved/discovered connection | No firmware query |
 | `board capabilities` | Capability list | discovery scan, then render | Also shown in `board info` |
@@ -74,24 +122,37 @@ provide a value (older firmware, or no clock / no active program declared), the 
 `unsupported` and exits with code 2; other failures exit with code 1. Build date and build time
 are not available in TRT-Core and have no command.
 
-`list-programs stm32` prints one application name per line, discovered from the
-files `Sources/programs/program_*.c` of the STM32CubeIDE project (sorted; read-only,
-it builds and flashes nothing). These are exactly the names `build stm32` and
-`flash stm32` accept. It exits with code 1 if no program is found.
+`board update <address>` checks that the installed application matches the board's
+HWID and fixes it if not (STM32 only). It reads HWID, ACTIVE_PROGRAM and the INFO family,
+picks the application `app_<HWID>_*` from the STM32CubeIDE project, and prints both. On a
+match it exits 0. On a mismatch it builds the required application, flashes it with
+verify and reset, waits up to 20 s for the board to answer again, and re-reads HWID
+and ACTIVE_PROGRAM. It exits 0 when the board reports the required application, else 1.
+`--check` only reports and exits 1 on mismatch. Firmware that does not report a HWID
+exits 2 with the one-time bootstrap commands (`trt build stm32 app_0000_idle`,
+`trt flash stm32`, `trt discover`). The model is documented in TRT-core
+`docs/hwid-and-firmware-update.md`.
 
-`build stm32 <program>` builds one application of the STM32CubeIDE project
+`list-programs stm32` prints one application name per line, discovered from the
+files `Sources/programs/app_<HWID>_<name>.c` of the STM32CubeIDE project (sorted; files not
+following that naming are ignored; read-only, it builds and flashes nothing). These are
+exactly the names `build stm32` and `flash stm32` accept. It exits with code 1 if no
+program is found.
+
+`build stm32 <app>` builds one application of the STM32CubeIDE project
 (`TRT-core/TRT-stm32/am modulation`) with TRT-Core included, in
-`build/<program>/` (CubeIDE's `Debug/` is not touched), via
-`cmake ... -DACTIVE_PROGRAM=PROGRAM_<NAME>` and `cmake --build`. It copies the
-`.elf` to `artifacts/<program>/<program>.elf` and records it in
-`artifacts/latest.json`. It never flashes. Requires `cmake` and
-`arm-none-eabi-gcc` on `PATH` (the STM32CubeIDE toolchain). Valid names are the
-files in `Sources/programs/program_*.c`; an unknown name lists them.
+`build/<app>/` (CubeIDE's `Debug/` is not touched), via
+`cmake ... -DACTIVE_PROGRAM=APP_<HWID>_<NAME>` and `cmake --build`. It copies the
+`.elf` to `artifacts/<app>/<app>.elf` and records it in
+`artifacts/latest.json`. It never flashes. Needs `cmake` and `arm-none-eabi-gcc`
+(and uses `ninja` if present): from `PATH`, or else the copies bundled with
+STM32CubeIDE under `C:\ST\STM32CubeIDE_*`. Valid names are the files in
+`Sources/programs/app_<HWID>_<name>.c`; an unknown name lists them.
 
 `flash stm32` flashes an existing artifact and never builds: with no name the
 most recent build (`latest.json`), with a name that application's stored build,
-using `STM32_Programmer_CLI -c port=SWD -w <elf> -v -rst` (must be on `PATH`).
-If nothing is built it tells you to run `trt build stm32 <program>`.
+using `STM32_Programmer_CLI -c port=SWD -w <elf> -v -rst` (from `PATH` or STM32CubeIDE).
+If nothing is built it tells you to run `trt build stm32 <app>`.
 `flash stm32 --platformio` keeps the previous behaviour: it runs
 `python -m platformio run -d <TRT-stm32> -t upload` (`--port` applies only here).
 `stm32 test` scans serial ports unless one is specified and sends all six
@@ -107,7 +168,7 @@ trt stm32 test --port COM5
 ```
 
 Discovery scans every serial COM port (without VID/PID filtering), tries the
-TRT v0.1 PING/ACK handshake before STM32 identity queries, and caches board ID,
+TRT v0.1 PING/ACK handshake before STM32 identity queries, and caches board address,
 port, and 115200 baudrate in `%USERPROFILE%\.trt\boards.json`.
 `trt board info 2` resolves the cached port or performs a discovery scan;
 `--port COM5` bypasses port resolution. The info command reads PING, BOARD_VERSION,
@@ -208,7 +269,9 @@ TRT Core 0.1.0
 
 ## trt help
 
-Display the full command tree with descriptions.
+The full reference: concepts (Board Address, Board ID, HWID, Application ID), how to read
+MATCH / MISMATCH, the typical workflow, heartbeat, and every visible command grouped by
+purpose. `trt` alone shows the Quick Start; `trt --help` the grouped command list.
 
 ```bash
 trt help
@@ -237,7 +300,7 @@ Version: 1.0.0
 Check for a newer version of the TRT CLI application.
 
 > **Scope:** This command updates the `trt-cli` Python package on your machine.
-> It is entirely independent from board firmware updates (`trt board <id> update`, future).
+> It is entirely independent from board firmware updates (`trt board update <address>`).
 
 ```bash
 trt update                  # Check for updates
@@ -295,7 +358,7 @@ trt listen              # all serial ports, all boards
 trt board listen 101    # only board 101
 ```
 
-Stop with Ctrl+C. `trt board listen <id>` needs a numeric board ID and ignores frames from other boards.
+Stop with Ctrl+C. `trt board listen <address>` needs a numeric board address and ignores frames from other boards.
 
 ```
 Board 101: HEARTBEAT
@@ -305,7 +368,7 @@ Board 101: HEARTBEAT
 
 ### Relationship with TRT-Core heartbeat
 
-Every TRT-Core board emits a HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`) about once per second. `listen` receives and prints it. Other event frames are shown as `EVENT 0x<id> payload=<hex>`. Heartbeat only shows that the runtime is alive; it does not replace discovery (`trt discover`, `trt board <id> info`, `trt board <id> capabilities`). See the TRT-Core `docs/event-system.md`.
+Every TRT-Core board emits a HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`) about once per second. `listen` receives and prints it. Other event frames are shown as `EVENT 0x<id> payload=<hex>`. Heartbeat only shows that the runtime is alive; it does not replace discovery (`trt discover`, `trt board info <address>`, `trt board capabilities <address>`). See the TRT-Core `docs/event-system.md`.
 
 ### When to use it
 
@@ -319,7 +382,7 @@ Every TRT-Core board emits a HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`) ab
 
 1. Flash the board.
 2. Run `trt listen`. A `HEARTBEAT` line about every second confirms the board is alive (the first one can take about a second, because opening the port resets Arduino-type boards).
-3. Run `trt discover` or `trt board <id> info` to check identity and version.
+3. Run `trt discover` or `trt board info <address>` to check identity and version.
 
 ### Notes
 
@@ -337,15 +400,36 @@ List all boards currently known to TRT.
 trt boards
 ```
 
-**Output columns:** Board ID · Type · Revision · Firmware · Build ID · Transport · Status
+**Output columns:** ID · Name · Firmware (version #build) · Application · HWID (read / expected) · Status
 
-**Example:**
+- **Application**: ACTIVE_PROGRAM, the application installed in the firmware.
+- **HWID read / expected**: the hardware ID read from the board's ID pins (D6..D3, e.g. `0010` = 2)
+  / the HWID the installed application is written for (the digits in `app_<HWID>_<name>`).
+  `----` when the firmware does not report it.
+- **Status**: `MATCH`, `MISMATCH` (update required), `NO HWID` (firmware cannot read the HWID) or
+  `NO APP` (no `app_<HWID>_*` application declared). Below the table, every board that needs
+  action gets one line with the command to run.
+
+**Example (match):**
 ```
-╭──────────────── Connected Boards ────────────────╮
-│ Board ID │ Type     │ Rev │ Firmware │ Transport  │ Status    │
-│ 101      │ UNSPECIFIED │ - │ 0.1.0 │ 000004 │ usb:COM4 │ ready │
-╰──────────────────────────────────────────────────╯
+Connected Boards
+Addr  Name           Firmware       Application             HWID         Status
+201   am-modulation  0.1.0 #000001  app_0002_analog_family  0010 / 0010  MATCH
+HWID: read from hardware / expected by the installed application
 ```
+
+**Example (mismatch):**
+```
+Connected Boards
+Addr  Name           Firmware       Application    HWID         Status
+201   am-modulation  0.1.0 #000001  app_0000_idle  0010 / 0000  MISMATCH
+HWID: read from hardware / expected by the installed application
+  Board 201: update required. Run trt board update 201
+```
+
+`trt boards`, `trt discover` and `trt board info <address>` show the same status values;
+`board info` adds port, revision, protocol, serial and capabilities. Board address, Board ID,
+HWID and Application ID are explained in TRT-core `docs/hwid-and-firmware-update.md`.
 
 ---
 
@@ -357,25 +441,48 @@ Force a rescan for connected boards on all active transports.
 trt discover
 ```
 
-Enumerates available serial ports, probes each port with TRT protocol frames, and lists TRT-compatible boards.
+Enumerates available serial ports, probes each port with TRT protocol frames, and prints the
+same table as `trt boards`.
 
 ---
 
 ## trt board
 
-Operate on a specific board.  All sub-commands require a board ID.
+Inspect and update one board.  All sub-commands take the board address shown by `trt boards`.
 
 ```bash
-trt board <board_id> <sub-command> [options]
+trt board <sub-command> <address> [options]
 ```
 
 ### trt board \<id\> info
 
-Display board identity and firmware details.
+Display one board: first the same status block as its `trt boards` row, then details.
 
 ```bash
-trt board 101 info
+trt board info 201
 ```
+
+```
++------------------------ Board 201 -------------------------+
+|   Address        201                                       |
+|   Name           am-modulation (STM32)                     |
+|   Firmware       0.1.0  build 000001                       |
+|   Application    app_0002_analog_family                    |
+|   HWID           0010 / 0010  (read 2 / expected 2)        |
+|   Status         MATCH  application matches the hardware   |
++------------------------------------------------------------+
++------------- Details -------------+
+|   Port            COM9            |
+|   Revision        STM32L073RZ     |
+|   Protocol        1               |
+|   Serial          am-modulation   |
+|   Capabilities    SYSTEM          |
++-----------------------------------+
+```
+
+On a mismatch the HWID line reads `0010 / 0000  (read 2 / expected 0)`, the status
+`MISMATCH  application is for other hardware`, and a final line says
+`Board 201: update required. Run trt board update 201`.
 
 ### trt board \<id\> status
 
