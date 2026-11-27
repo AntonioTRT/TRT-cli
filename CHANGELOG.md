@@ -5,7 +5,6 @@
 Release notes: [RELEASE_NOTES_v1.0.0.md](RELEASE_NOTES_v1.0.0.md).
 
 - Version is now `1.0.0rc1`; development status classifier changed from Alpha to Beta.
-- Removed the hidden `trt --dev` developer area (placeholder commands for individual developers).
 - `trt stm32 test` discovers the board and uses its address when `--board-id` is omitted; with several
   boards it asks for `--board-id`, with none it keeps the previous default.
 - `BoardDiscoveryService.discover_serial` accepts an optional list of ports.
@@ -20,7 +19,7 @@ Included in 1.0.0rc1 (previously "Unreleased"):
 - Handles the TRT-Core HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`), printed as `Board <id>: HEARTBEAT`.
 - Request/response exchanges now skip event frames while waiting for a reply.
 
-## 1.0.0 - 2026-09-08
+## Hardware milestone - 2026-09-08 (versioned 1.0.0 internally)
 
 TRT-CLI 1.0.0 is the first hardware-validated release.
 

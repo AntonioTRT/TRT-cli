@@ -87,8 +87,6 @@ but not implemented; see the v1.0.1 plan in the TRT documentation.
 ## Packaging improvements
 
 - Version `1.0.0rc1` (PEP 440); trove classifier **Development Status :: 4 - Beta**.
-- The undocumented developer-only `trt --dev` area (three placeholder commands) was removed, so
-  nothing internal ships in the wheel.
 - README, QUICKSTART, `docs/cli-reference.md` and `trt help` were checked against the actual
   commands; the clone URL, STM32 workflow and `build`/`flash` descriptions were corrected.
 
