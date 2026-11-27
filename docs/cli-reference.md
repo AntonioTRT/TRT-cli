@@ -20,16 +20,18 @@ trt board <id|name|type|revision|version|build-id|runtime|active-program|uptime|
 trt build stm32 <program> [--project-dir PATH]
 trt flash stm32 [program] [--project-dir PATH]
 trt flash stm32 --platformio [--port COM5] [--project-dir PATH]
-trt stm32 test [--port COM5] [--board-id 0x0002]
+trt stm32 test [--port COM5] [--board-id 201]
 trt board info 2 [--port COM5]
 ```
+
+In this CLI "board id" / `<board-id>` / the **Board ID** column mean the protocol `BOARD_ID` node address (101, 201, ...). That is not the Board ID of the hardware platform (mechanism TBD), not a HWID and not an Application ID; see `TRT-core/docs/identifiers.md`.
 
 `board <query> <board-id>` are read-only queries; each asks the board for one value it
 already knows and prints it (`--port` overrides the saved/discovered port):
 
 | Command | Source |
 |---|---|
-| `board id` | board ID in the reply frame |
+| `board id` | `BOARD_ID` (protocol node address) in the reply frame |
 | `board name` | INFO field 0x01 |
 | `board type` | INFO field 0x06 (board family: Arduino, STM32, ESP32, ...) |
 | `board revision` | BOARD_VERSION |
@@ -50,7 +52,7 @@ already knows and prints it (`--port` overrides the saved/discovered port):
 | `board name` | Board name | live, INFO 0x01 | |
 | `board type` | Board family (Arduino, STM32, ESP32, ...) | live, INFO 0x06 | Distinct from `name` |
 | `board revision` | Hardware revision | live, BOARD_VERSION | |
-| `board id` | Confirms which ID the board replies with | live, reply header | You already pass the ID in; `trt boards` lists IDs |
+| `board id` | Confirms which `BOARD_ID` the board replies with | live, reply header | You already pass the ID in; `trt boards` lists IDs |
 | `board runtime` | TRT-Core runtime state | live, RUNTIME | Currently only `RUNNING` |
 | `board active-program` | Application on the board | live, ACTIVE_PROGRAM | Unique |
 | `board uptime` | Time since boot | live, UPTIME | Unique |
@@ -75,26 +77,33 @@ provide a value (older firmware, or no clock / no active program declared), the 
 are not available in TRT-Core and have no command.
 
 `list-programs stm32` prints one application name per line, discovered from the
-files `Sources/programs/program_*.c` of the STM32CubeIDE project (sorted; read-only,
-it builds and flashes nothing). These are exactly the names `build stm32` and
-`flash stm32` accept. It exits with code 1 if no program is found.
+files `Sources/apps/app_<id>_<name>.c` of the STM32CubeIDE project (sorted; read-only,
+it builds and flashes nothing). `<id>` is 4 hex digits. These names (or just the ID)
+are what `build stm32` and `flash stm32` accept. It exits with code 1 if none is found.
 
-`build stm32 <program>` builds one application of the STM32CubeIDE project
+`build stm32 [application]` builds the STM32CubeIDE project
 (`TRT-core/TRT-stm32/am modulation`) with TRT-Core included, in
-`build/<program>/` (CubeIDE's `Debug/` is not touched), via
-`cmake ... -DACTIVE_PROGRAM=PROGRAM_<NAME>` and `cmake --build`. It copies the
-`.elf` to `artifacts/<program>/<program>.elf` and records it in
+`build/<name>/` (CubeIDE's `Debug/` is not touched), via `cmake` and `cmake --build`.
+It copies the `.elf` to `artifacts/<name>/<name>.elf` and records it in
 `artifacts/latest.json`. It never flashes. Requires `cmake` and
-`arm-none-eabi-gcc` on `PATH` (the STM32CubeIDE toolchain). Valid names are the
-files in `Sources/programs/program_*.c`; an unknown name lists them.
+`arm-none-eabi-gcc` on `PATH` (the STM32CubeIDE toolchain).
+
+- With no application it builds the **common image** (`<name>` = `firmware`): at startup the
+  firmware reads the daughter-board HWID and runs the matching application. `--hwid 0x2` makes a
+  board with no HWID lines (the NUCLEO) report that HWID, to simulate a daughter board.
+- With an application (full name, or its ID such as `0001`) it builds a **development image**
+  that always runs that application and skips HWID selection
+  (`-DACTIVE_APP_OVERRIDE=<id>`). An unknown name lists the valid ones.
 
 `flash stm32` flashes an existing artifact and never builds: with no name the
-most recent build (`latest.json`), with a name that application's stored build,
-using `STM32_Programmer_CLI -c port=SWD -w <elf> -v -rst` (must be on `PATH`).
-If nothing is built it tells you to run `trt build stm32 <program>`.
+most recent build (`latest.json`), with a name (`firmware`, an application name or ID) that
+stored build, using `STM32_Programmer_CLI -c port=SWD -w <elf> -v -rst` (must be on `PATH`).
+If nothing is built it tells you to run `trt build stm32 [application]`.
 `flash stm32 --platformio` keeps the previous behaviour: it runs
 `python -m platformio run -d <TRT-stm32> -t upload` (`--port` applies only here).
-`stm32 test` scans serial ports unless one is specified and sends all six
+`stm32 test` discovers the board (same probe as `trt discover`) and uses its address; with several
+boards it lists them and requires `--board-id`, and with none it falls back to address `0x0002`.
+`--board-id` always skips discovery. It scans serial ports unless one is specified and sends all six
 TRT v0.1 requests at 115200 baud, 8N1. It checks PING for ACK `0x8001`,
 the five data commands for response `0x8003`, and decodes INFO, STATUS, and
 the capability identifier list. V0.1 CRC fields are emitted as `0x0000`,
@@ -107,7 +116,7 @@ trt stm32 test --port COM5
 ```
 
 Discovery scans every serial COM port (without VID/PID filtering), tries the
-TRT v0.1 PING/ACK handshake before STM32 identity queries, and caches board ID,
+TRT v0.1 PING/ACK handshake before STM32 identity queries, and caches the protocol `BOARD_ID`,
 port, and 115200 baudrate in `%USERPROFILE%\.trt\boards.json`.
 `trt board info 2` resolves the cached port or performs a discovery scan;
 `--port COM5` bypasses port resolution. The info command reads PING, BOARD_VERSION,
@@ -295,7 +304,7 @@ trt listen              # all serial ports, all boards
 trt board listen 101    # only board 101
 ```
 
-Stop with Ctrl+C. `trt board listen <id>` needs a numeric board ID and ignores frames from other boards.
+Stop with Ctrl+C. `trt board listen <id>` needs a numeric `BOARD_ID` and ignores frames from other boards.
 
 ```
 Board 101: HEARTBEAT
@@ -337,7 +346,7 @@ List all boards currently known to TRT.
 trt boards
 ```
 
-**Output columns:** Board ID · Type · Revision · Firmware · Build ID · Transport · Status
+**Output columns:** Board ID (the protocol `BOARD_ID`) · Type · Revision · Firmware · Build ID · Transport · Status
 
 **Example:**
 ```
@@ -363,7 +372,7 @@ Enumerates available serial ports, probes each port with TRT protocol frames, an
 
 ## trt board
 
-Operate on a specific board.  All sub-commands require a board ID.
+Operate on a specific board.  All sub-commands require a board ID (the protocol `BOARD_ID`).
 
 ```bash
 trt board <board_id> <sub-command> [options]

@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.table import Table
 
 from trt.protocol.v01 import decode_capability_ids, decode_info_payload
+from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.transport.serial_transport import SerialTransport
 
 console = Console()
@@ -43,7 +44,13 @@ _STATUS_NAMES = {
 }
 
 
-@app.command("test", help="Run the full TRT v0.1 serial handshake against an STM32 board")
+@app.command(
+    "test",
+    help=(
+        "Run the full TRT v0.1 serial handshake against an STM32 board. Without --board-id the board is "
+        "discovered automatically; if several boards answer, pass --board-id (and --port) to pick one."
+    ),
+)
 def test_stm32(
     port: str | None = typer.Option(
         None,
@@ -51,12 +58,24 @@ def test_stm32(
         "-p",
         help="ST-LINK virtual COM port; scans serial ports when omitted",
     ),
-    board_id: str = typer.Option(_BOARD_ID, "--board-id", help="TRT board id (default: 0x0002)"),
+    board_id: str | None = typer.Option(
+        None,
+        "--board-id",
+        help=f"TRT board address, e.g. 201 (default: discovered; {_BOARD_ID} if nothing is discovered)",
+    ),
 ) -> None:
     ports = [port] if port else SerialTransport.available_ports()
     if not ports:
         console.print("\n  [red]No serial ports found. Connect the Nucleo or pass --port COMx.[/red]\n")
         raise typer.Exit(1)
+
+    if board_id is None:
+        target = _discover_target(ports)
+        if target is not None:
+            board_id, ports = target
+            console.print(f"  [dim]Discovered board {board_id} on {ports[0]}[/dim]")
+        else:
+            board_id = _BOARD_ID
 
     errors: list[str] = []
     for candidate in ports:
@@ -78,6 +97,33 @@ def test_stm32(
         console.print(f"  [dim]{failure}[/dim]")
     console.print()
     raise typer.Exit(1)
+
+
+def _discover_target(ports: list[str]) -> tuple[str, list[str]] | None:
+    """Find the one board to test: ``(board_id, [port])``, or None to keep the legacy default.
+
+    Uses the same probe as ``trt discover``. One board found: use its address. Several: prefer the
+    single STM32 among them; if that is still ambiguous, refuse to guess and ask for --board-id.
+    Nothing found (or discovery failed): None, so the caller keeps the pre-discovery behaviour.
+    """
+    try:
+        boards = BoardDiscoveryService().discover_serial(ports)
+    except (OSError, RuntimeError):
+        return None
+    found = [board for board in boards if board.transport is not None and board.transport.port]
+    if len(found) > 1:
+        stm32_boards = [b for b in found if "stm32" in str(b.metadata.get("board_type", "")).lower()]
+        found = stm32_boards if len(stm32_boards) == 1 else found
+    if not found:
+        return None
+    if len(found) > 1:
+        console.print("\n  [red]Several TRT boards answered; choose one with --board-id (and --port):[/red]")
+        for board in found:
+            console.print(f"    {board.identity.board_id}  on {board.transport.port}")  # type: ignore[union-attr]
+        console.print()
+        raise typer.Exit(2)
+    board = found[0]
+    return board.identity.board_id, [str(board.transport.port)]  # type: ignore[union-attr]
 
 
 def _run_protocol_test(transport: SerialTransport, board_id: str) -> None:

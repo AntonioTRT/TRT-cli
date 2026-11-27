@@ -258,7 +258,7 @@ FLAGS is reserved for future packet-type modifiers.  In V1 all flags are zero.
 |---|---|
 | Size | 2 bytes |
 | Range | `0x0001` – `0xFFFF` |
-| Purpose | Logical target board address |
+| Purpose | Logical target node address (the protocol `BOARD_ID`; not the Board ID of the hardware platform, not a HWID, not an Application ID) |
 
 BOARD_ID allows a single host connection to address multiple boards.
 

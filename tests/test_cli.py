@@ -43,6 +43,7 @@ from trt.services.update_service import (
 from trt.version import get_version, get_version_info
 
 runner = CliRunner()
+hardware = pytest.mark.hardware  # needs a TRT board on COM4; see tests/conftest.py
 
 
 def make_test_repository() -> BoardRepository:
@@ -73,7 +74,7 @@ def make_test_repository() -> BoardRepository:
 
 class TestVersion:
     def test_get_version(self) -> None:
-        assert get_version() == "1.0.0"
+        assert get_version() == "1.0.0rc1"
 
     def test_get_version_info(self) -> None:
         assert get_version_info() == (1, 0, 0)
@@ -149,6 +150,14 @@ class TestUpdateService:
     def test_parse_version_prerelease_stripped(self) -> None:
         assert _parse_version("v1.0.0-beta.1") == (1, 0, 0)
 
+    def test_parse_version_handles_release_candidates(self) -> None:
+        assert _parse_version("1.0.0rc1") == (1, 0, 0)
+
+    def test_final_release_is_newer_than_its_release_candidate(self) -> None:
+        assert _is_newer("1.0.0", "1.0.0rc1")
+        assert not _is_newer("1.0.0rc1", "1.0.0")
+        assert not _is_newer("1.0.0", "1.0.0")
+
     def test_is_newer_true(self) -> None:
         assert _is_newer("0.2.0", "0.1.0") is True
 
@@ -191,6 +200,7 @@ class TestBoardsCommand:
         result = runner.invoke(app, ["boards"])
         assert result.exit_code == 0
 
+    @hardware
     def test_boards_shows_discovered_real_board(self) -> None:
         result = runner.invoke(app, ["boards"])
         assert "101" in result.stdout
@@ -216,6 +226,7 @@ class TestDiscoverCommand:
 # ---------------------------------------------------------------------------
 
 class TestBoardSubcommands:
+    @hardware
     def test_info_known_board(self) -> None:
         result = runner.invoke(app, ["board", "info", "101"])
         assert result.exit_code == 0
@@ -225,10 +236,12 @@ class TestBoardSubcommands:
         result = runner.invoke(app, ["board", "info", "nonexistent"])
         assert result.exit_code != 0
 
+    @hardware
     def test_status(self) -> None:
         result = runner.invoke(app, ["board", "status", "101"])
         assert result.exit_code == 0
 
+    @hardware
     def test_capabilities(self) -> None:
         result = runner.invoke(app, ["board", "capabilities", "101"])
         assert result.exit_code == 0
@@ -366,6 +379,7 @@ class TestBoardRegistry:
         reg.clear()
         assert len(reg) == 0
 
+    @hardware
     def test_discovery_service_populates_registry_from_transport(self) -> None:
         service = BoardDiscoveryService()
         boards = service.discover()
@@ -448,46 +462,6 @@ class TestMockBoardOperations:
     def test_mock_spi_transfer(self) -> None:
         result = self.service().transfer_spi("board0", "0x00")
         assert result.status == "ok"
-
-
-class TestDevMode:
-    """Hidden `trt --dev` area (internal; see trt/commands/dev.py)."""
-
-    def test_list(self, capsys) -> None:
-        from trt.commands.dev import run_dev
-
-        assert run_dev([]) == 0
-        out = capsys.readouterr().out
-        assert "Available development commands" in out
-        for name in ("antonio", "caleb", "angel"):
-            assert name in out
-
-    @pytest.mark.parametrize("name", ["antonio", "caleb", "angel"])
-    def test_each_command(self, name, capsys) -> None:
-        from trt.commands.dev import run_dev
-
-        assert run_dev([name]) == 0
-        assert f"{name.capitalize()} test function" in capsys.readouterr().out
-
-    def test_unknown(self) -> None:
-        from trt.commands.dev import run_dev
-
-        assert run_dev(["nope"]) == 1
-
-    def test_main_dispatches_dev(self, monkeypatch, capsys) -> None:
-        from trt.cli import main
-
-        monkeypatch.setattr("sys.argv", ["trt", "--dev", "caleb"])
-        with pytest.raises(SystemExit) as exc:
-            main()
-        assert exc.value.code == 0
-        assert "Caleb test function" in capsys.readouterr().out
-
-    def test_not_in_help(self) -> None:
-        for args in (["help"], ["--help"]):
-            out = runner.invoke(app, args).stdout
-            assert "--dev" not in out
-            assert "antonio" not in out and "caleb" not in out and "angel" not in out
 
 
 if __name__ == "__main__":

@@ -56,10 +56,11 @@ class BoardDiscoveryService:
         self.repository = BoardRepository(registry)
         return self.repository.get_all()
 
-    def discover_serial(self) -> list[Board]:
+    def discover_serial(self, ports: list[str] | None = None) -> list[Board]:
+        """Probe serial ports (all available ports when ``ports`` is None)."""
         registry = BoardRegistry()
         connections: dict[str, SerialConnection] = {}
-        for port in SerialTransport.available_ports():
+        for port in SerialTransport.available_ports() if ports is None else ports:
             board = self._probe_port(port)
             if board is not None:
                 registry.register(board)

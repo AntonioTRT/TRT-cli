@@ -27,6 +27,7 @@ upgrade command.  For now all installation methods are scaffolded.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -129,16 +130,24 @@ def _parse_version(tag: str) -> tuple[int, ...]:
     Returns:
         Tuple of integers, e.g. (0, 2, 0).
     """
-    clean = tag.lstrip("v").split("-")[0]  # strip "v" prefix and pre-release suffix
-    try:
-        return tuple(int(p) for p in clean.split("."))
-    except ValueError:
+    match = re.match(r"\d+(?:\.\d+)*", tag.lstrip("v"))  # drops "-beta.1" and "rc1" suffixes
+    if match is None:
         return (0,)
+    return tuple(int(part) for part in match.group(0).split("."))
+
+
+def _is_prerelease(tag: str) -> bool:
+    """True for "1.0.0rc1", "1.0.0-beta.1" and similar."""
+    return re.fullmatch(r"v?\d+(?:\.\d+)*", tag) is None
 
 
 def _is_newer(candidate: str, baseline: str) -> bool:
     """Return True if *candidate* is strictly newer than *baseline*."""
-    return _parse_version(candidate) > _parse_version(baseline)
+    candidate_version, baseline_version = _parse_version(candidate), _parse_version(baseline)
+    if candidate_version == baseline_version:
+        # 1.0.0 is newer than the 1.0.0rc1 you are running; the reverse is not an update.
+        return _is_prerelease(baseline) and not _is_prerelease(candidate)
+    return candidate_version > baseline_version
 
 
 # ---------------------------------------------------------------------------

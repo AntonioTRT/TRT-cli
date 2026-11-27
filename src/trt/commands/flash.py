@@ -16,6 +16,7 @@ from trt.commands.build import (
     LATEST_MANIFEST,
     artifact_path,
     list_programs,
+    resolve_app,
     resolve_cubeide_dir,
     run_checked,
 )
@@ -28,13 +29,13 @@ app = typer.Typer(help="Flash firmware to supported boards", no_args_is_help=Tru
     "stm32",
     help=(
         "Flash a previously built STM32 firmware (see: trt build stm32). With no name, flashes the "
-        "most recently built firmware; with a name (trt flash stm32 program_blink), that application's "
-        "build. Never builds."
+        "most recently built firmware; with a name (trt flash stm32 firmware, or an application name or "
+        "ID such as 0001), that build. Never builds."
     ),
 )
 def flash_stm32(
     program: str | None = typer.Argument(
-        None, help="Application name, e.g. program_blink; omit for the most recent build"
+        None, help="Build to flash: 'firmware' (common image), an application name or ID; omit for the latest"
     ),
     port: str | None = typer.Option(None, "--port", help="ST-LINK virtual COM port (--platformio only)"),
     project_dir: Path | None = typer.Option(
@@ -80,11 +81,12 @@ def _select_artifact(cube_dir: Path, program: str | None) -> tuple[Path, str]:
             console.print("\n  [red]No STM32 build found.[/red] Run: trt build stm32 <program>\n")
             raise typer.Exit(1) from error
     else:
-        name, elf = program, artifact_path(cube_dir, program)
+        name = resolve_app(program, list_programs(cube_dir)) or program
+        elf = artifact_path(cube_dir, name)
 
     if not elf.is_file():
-        built = sorted(p.name for p in (cube_dir / ARTIFACTS_SUBDIR).glob("program_*") if p.is_dir())
-        hint = f"Built: {', '.join(built)}." if built else f"Available programs: {', '.join(list_programs(cube_dir))}."
+        built = sorted(p.name for p in (cube_dir / ARTIFACTS_SUBDIR).glob("*") if p.is_dir())
+        hint = f"Built: {', '.join(built)}." if built else f"Available applications: {', '.join(list_programs(cube_dir))}."
         console.print(f"\n  [red]No built firmware for {name}.[/red] {hint} Run: trt build stm32 {name}\n")
         raise typer.Exit(1)
     return elf, name

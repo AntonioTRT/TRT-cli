@@ -1,8 +1,8 @@
 # TRT - Tool Runtime Terminal
 
-> A Python CLI for board-agnostic embedded hardware control with validated Arduino Uno communication over the TRT protocol.
+> A Python CLI for board-agnostic embedded hardware control over the TRT protocol. **Release candidate 1.0.0rc1 (Beta).**
 
-TRT provides a unified command-line interface for controlling embedded boards across Windows, Linux, and macOS. Version 1.0.0 marks the first successful end-to-end hardware milestone: TRT-CLI opened COM4, sent TRT protocol frames to an Arduino Uno running TRT-Core firmware, decoded real responses, and displayed board identity data.
+TRT provides a unified command-line interface for controlling embedded boards across Windows, Linux, and macOS. Version 1.0.0 (currently release candidate `1.0.0rc1`) marks the first successful end-to-end hardware milestone: TRT-CLI opened COM4, sent TRT protocol frames to an Arduino Uno running TRT-Core firmware, decoded real responses, and displayed board identity data.
 
 ```text
 TRT-CLI -> COM4 -> Arduino Uno -> TRT-Core -> real protocol response
@@ -22,6 +22,8 @@ BOARD_INFO    UNSPECIFIED
 FW_VERSION    0.1.0
 BUILD_ID      000004
 ```
+
+> Terminology: the `Board ID` label above is the protocol `BOARD_ID` field (a node address, here 101). It is not the Board ID of the hardware platform, a HWID or an Application ID. See `TRT-core/docs/identifiers.md`.
 
 ---
 
@@ -71,8 +73,8 @@ Cross-platform status (Arduino, ESP32, STM32) is documented in the TRT-core repo
 ## Installation
 
 ```bash
-git clone https://github.com/trt-project/trt-cli.git
-cd trt-cli
+git clone https://github.com/AntonioTRT/TRT-cli.git
+cd TRT-cli
 pip install -e .
 ```
 
@@ -97,22 +99,27 @@ trt board listen 101
 
 ### STM32 NUCLEO-L073RZ
 
-From the workspace root containing `TRT-core/TRT-stm32`, build and upload via
-the ST-LINK probe (PlatformIO Core must be installed):
+From the workspace root containing `TRT-core/TRT-stm32` (needs `cmake`, `arm-none-eabi-gcc` and
+`STM32_Programmer_CLI` on `PATH`):
 
 ```powershell
-trt flash stm32
-trt flash stm32 --port COM5
-trt stm32 test
-trt stm32 test --port COM5
-trt board info 2
-trt board info 2 --port COM5
+trt list-programs stm32          # applications available in the CubeIDE project
+trt build stm32                  # common image: the daughter-board HWID selects the application
+trt build stm32 0001             # development image that always runs app_0001 (skips HWID)
+trt flash stm32                  # flash the latest build over the ST-LINK probe (SWD)
+trt flash stm32 --platformio     # legacy PlatformIO project: build and upload
+trt discover
+trt stm32 test                   # discovers the board, then runs the protocol test
+trt stm32 test --port COM5 --board-id 201
+trt board info 201
 ```
 
-The protocol test scans serial ports if `--port` is omitted and verifies PING,
-FW_VERSION, BOARD_VERSION, INFO, STATUS, and CAPABILITIES at 115200 baud, 8N1.
-`trt discover` saves each detected serial board ID, COM port, and baudrate in
-`%USERPROFILE%\.trt\boards.json`; `trt board info 2` uses that saved port or
+`trt stm32 test` finds the board with the same probe as `trt discover` and uses its address. If
+several boards answer it does not guess: it lists them and asks for `--board-id` (and `--port`).
+If nothing is discovered it falls back to scanning ports with address `0x0002`. The test verifies
+PING, FW_VERSION, BOARD_VERSION, INFO, STATUS, and CAPABILITIES at 115200 baud, 8N1.
+`trt discover` saves each detected serial board's protocol `BOARD_ID`, COM port, and baudrate in
+`%USERPROFILE%\.trt\boards.json`; `trt board info <id>` uses that saved port or
 performs a discovery scan if there is no cached connection.
 
 ---
@@ -143,7 +150,9 @@ Commands parse arguments and render results. Services coordinate board operation
 ## Development
 
 ```bash
-pytest
+pip install -e ".[dev]"
+pytest                       # hardware-independent; tests marked "hardware" are skipped
+TRT_HARDWARE_TESTS=1 pytest  # also runs the tests that need an Arduino Uno on COM4
 ```
 
 Optional checks:

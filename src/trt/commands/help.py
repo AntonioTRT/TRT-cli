@@ -40,7 +40,7 @@ def show_help() -> None:
     top.add_row("trt listen", "Print heartbeat/event messages from all boards")
     top.add_row("trt boards", "List boards found by serial discovery")
     top.add_row("trt board <command> <id>", "Query a discovered board (see below)")
-    top.add_row("trt build stm32 <program>", "Build an STM32 application (no flashing)")
+    top.add_row("trt build stm32 [program]", "Build STM32 firmware (common image, or one application; no flashing)")
     top.add_row("trt flash stm32 [program]", "Flash the latest (or named) STM32 build")
     top.add_row("trt list-programs stm32", "List available STM32 applications")
     top.add_row("trt board <query> <id>", "version, build-id, name, type, revision, id, runtime, active-program, uptime, transport")

@@ -3,7 +3,7 @@
 ## Requisitos
 
 ```text
-Paquete: trt-cli 1.0.0
+Paquete: trt-cli 1.0.0rc1
 Python: 3.13+
 Dependencias: Typer, Rich, pyserial
 Comando: trt
@@ -48,7 +48,7 @@ Hardware validado: Arduino Uno en COM4 con firmware TRT-Core
 
    ```text
     TRT CLI
-    Version:  1.0.0
+    Version:  1.0.0rc1
    ```
 
    Si aparece `'trt' is not recognized`, la carpeta `Scripts` de Python no está
@@ -95,6 +95,8 @@ BOARD_INFO    UNSPECIFIED
 FW_VERSION    0.1.0
 BUILD_ID      000004
 ```
+
+> Terminología: la etiqueta `Board ID` de arriba es el campo `BOARD_ID` del protocolo (una dirección de nodo, aquí 101). No es el Board ID de la plataforma hardware, ni un HWID, ni un Application ID. Ver `TRT-core/docs/identifiers.md`.
 
 ## Actualizar / desinstalar
 

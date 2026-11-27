@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trt-cli"
-version = "1.0.0"
+version = "1.0.0rc1"
 description = "TRT - Tool Runtime Terminal: A modular hardware control ecosystem for embedded boards"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["cli", "hardware", "embedded", "boards", "terminal"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
@@ -84,3 +84,6 @@ skip_gitignore = true
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 addopts = "--cov=src/trt --cov-report=term-missing"
+markers = [
+    "hardware: needs a real TRT board on a serial port; skipped unless TRT_HARDWARE_TESTS=1",
+]
