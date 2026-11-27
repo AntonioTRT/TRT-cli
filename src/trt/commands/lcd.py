@@ -58,7 +58,7 @@ def write(
     console.print()
     console.print(
         f"  [yellow]{payload.get('label')}[/yellow]  line=[cyan]{payload.get('line')}[/cyan]  "
-        f"col=[cyan]{payload.get('col')}[/cyan]  text=[green]\"{payload.get('text')}\"[/green]"
+        f'col=[cyan]{payload.get('col')}[/cyan]  text=[green]"{payload.get('text')}"[/green]'
         "  [dim](mock)[/dim]"
     )
     console.print()

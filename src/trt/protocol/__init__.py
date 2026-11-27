@@ -5,12 +5,12 @@ models and provides a client abstraction for future real hardware communication.
 """
 
 from trt.protocol.models import (
-    DiscoverRequest,
-    DiscoverResponse,
     BoardInfoRequest,
     BoardInfoResponse,
     BuildIdRequest,
     BuildIdResponse,
+    DiscoverRequest,
+    DiscoverResponse,
     GetCapabilitiesRequest,
     GetCapabilitiesResponse,
     GetVersionRequest,

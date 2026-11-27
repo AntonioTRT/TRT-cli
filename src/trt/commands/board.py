@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich.console import Console
@@ -15,18 +16,34 @@ from trt.repositories.board_repository import BoardRepository
 from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.board_service import BoardActionResult, BoardService, RealBoardInfoResult
 
+if TYPE_CHECKING:
+    from trt.services.board_update_service import UpdatePlan
+
 console = Console()
 
 
 board_app = typer.Typer(
-    help="Operate on a specific board.  Usage: trt board <command> <board_id>",
+    help=(
+        "Inspect and update one board.  Usage: trt board <command> ADDRESS\n\n"
+        "ADDRESS is the board address shown by trt boards (e.g. 201). "
+        "Start with: trt board info ADDRESS"
+    ),
     no_args_is_help=True,
+    rich_markup_mode="rich",
 )
 
+# Help panels of `trt board --help`.
+STATUS_PANEL = "Status and update"
+QUERY_PANEL = "Single-value queries"
+MONITOR_PANEL = "Monitoring"
 
-@board_app.command("info", help="Show board identity and firmware information")
+
+@board_app.command(
+    "info", rich_help_panel=STATUS_PANEL,
+    help="Board status (mode, HWID read / expected, MATCH) and details",
+)
 def board_info(
-    board_id: str = typer.Argument(..., help="Board identifier, e.g. board0"),
+    board_id: str = typer.Argument(..., metavar="ADDRESS", help="Board address shown by trt boards, e.g. 201"),
     port: str | None = typer.Option(None, "--port", "-p", help="Serial port, e.g. COM5"),
 ) -> None:
     numeric_board_id: int | None
@@ -52,7 +69,7 @@ def board_info(
     _render_board_info(board_id, board)
 
 
-@board_app.command("status", help="Show current board status")
+@board_app.command("status", hidden=True, help="Show current board status")
 def board_status(
     board_id: str = typer.Argument(..., help="Board identifier"),
 ) -> None:
@@ -67,23 +84,23 @@ def board_status(
     console.print()
 
 
-@board_app.command("reset", help="Reset the board")
+@board_app.command("reset", hidden=True, help="Reset the board")
 def board_reset(
     board_id: str = typer.Argument(..., help="Board identifier"),
 ) -> None:
     _render_action(_run_board_action(board_id, lambda service: service.reset(board_id)))
 
 
-@board_app.command("reboot", help="Reboot the board into normal firmware")
+@board_app.command("reboot", hidden=True, help="Reboot the board into normal firmware")
 def board_reboot(
     board_id: str = typer.Argument(..., help="Board identifier"),
 ) -> None:
     _render_action(_run_board_action(board_id, lambda service: service.reboot(board_id)))
 
 
-@board_app.command("capabilities", help="List all capabilities advertised by the board")
+@board_app.command("capabilities", rich_help_panel=QUERY_PANEL, help="List the capabilities the board advertised at discovery")
 def board_capabilities(
-    board_id: str = typer.Argument(..., help="Board identifier"),
+    board_id: str = typer.Argument(..., metavar="ADDRESS", help="Board address shown by trt boards, e.g. 201"),
 ) -> None:
     service = BoardService()
     if board_id.isdigit():
@@ -105,9 +122,9 @@ def board_capabilities(
     _render_capabilities(board_id, board)
 
 
-@board_app.command("listen", help="Listen for messages (heartbeat, events) from this board")
+@board_app.command("listen", rich_help_panel=MONITOR_PANEL, help="Print heartbeat and events from this board (Ctrl+C to stop)")
 def board_listen(
-    board_id: str = typer.Argument(..., help="Numeric board identifier, e.g. 101"),
+    board_id: str = typer.Argument(..., metavar="ADDRESS", help="Board address shown by trt boards, e.g. 201"),
 ) -> None:
     from trt.commands.listen import run_listen
 
@@ -116,22 +133,25 @@ def board_listen(
 
 # Read-only queries: each asks the board for one value it already knows (see BoardQueryService).
 _QUERY_HELP = {
-    "id": "Show the board ID",
+    "id": "Show the board address the board replies with",
     "name": "Show the board name",
     "type": "Show the board type (family: Arduino, STM32, ESP32, ...)",
     "revision": "Show the board hardware revision",
     "version": "Show the firmware version",
     "build-id": "Show the firmware build identifier",
     "runtime": "Show the TRT-Core runtime state",
-    "active-program": "Show the application running on the board",
+    "hwid": "HWID of the connected daughter board (read from its ID pins)",
+    "mode": "Mode installed in the firmware (mode_<ID>_<name>)",
     "uptime": "Show the board uptime since boot",
-    "transport": "Show the transport used to reach the board",
+    "transport": "Show the serial port and baud rate used to reach the board",
 }
+# Shown with info/update: the two values that decide MATCH / MISMATCH.
+_STATUS_QUERIES = ("hwid", "mode")
 
 
-def _register_query(item: str, help_text: str) -> None:
+def _register_query(item: str, help_text: str, name: str | None = None, hidden: bool = False) -> None:
     def command(
-        board_id: str = typer.Argument(..., help="Numeric board identifier, e.g. 101"),
+        board_id: str = typer.Argument(..., metavar="ADDRESS", help="Board address shown by trt boards, e.g. 201"),
         port: str | None = typer.Option(None, "--port", "-p", help="Serial port, e.g. COM5"),
     ) -> None:
         from trt.services.board_query_service import BoardQueryService, QueryUnsupportedError
@@ -147,15 +167,131 @@ def _register_query(item: str, help_text: str) -> None:
             raise typer.Exit(1) from error
         console.print(f"  [cyan]{result.board_id}[/cyan]  {item}: [bold]{result.value}[/bold]\n", highlight=False)
 
-    command.__name__ = f"board_{item.replace('-', '_')}"
-    board_app.command(item, help=help_text)(command)
+    command.__name__ = f"board_{(name or item).replace('-', '_')}"
+    panel = STATUS_PANEL if item in _STATUS_QUERIES else QUERY_PANEL
+    board_app.command(name or item, help=help_text, rich_help_panel=panel, hidden=hidden)(command)
 
 
 for _item, _help in _QUERY_HELP.items():
     _register_query(_item, _help)
+# Former name of `trt board mode`, kept as a hidden alias.
+_register_query("mode", "Alias of: trt board mode", name="active-program", hidden=True)
 
 
-@board_app.command("modules", help="List loaded modules on the board")
+@board_app.command(
+    "update",
+    rich_help_panel=STATUS_PANEL,
+    short_help="Install the mode that matches the HWID (--check: report only)",
+    help=(
+        "Compare the HWID read from the hardware with the HWID the installed mode expects. "
+        "MATCH: nothing to do. MISMATCH: build the matching mode, flash it, wait for the "
+        "reboot and verify MATCH. --check only reports (exit 0 = MATCH, 1 = MISMATCH). STM32 only today."
+    ),
+)
+def board_update(
+    board_id: str = typer.Argument(..., metavar="ADDRESS", help="Board address shown by trt boards, e.g. 201"),
+    port: str | None = typer.Option(None, "--port", "-p", help="Serial port, e.g. COM9"),
+    check: bool = typer.Option(False, "--check", help="Only report; exit 1 on mismatch, never build or flash"),
+    project_dir: Path | None = typer.Option(
+        None,
+        "--project-dir",
+        help="Path to the TRT-stm32 directory or the STM32CubeIDE project",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+    ),
+) -> None:
+    from trt.commands.build import build_stm32_mode, list_modes, resolve_cubeide_dir
+    from trt.commands.flash import flash_stm32_elf
+    from trt.services.board_update_service import (
+        SUPPORTED_FAMILIES,
+        HwidUnsupportedError,
+        plan_update,
+        read_board_state,
+        wait_for_board,
+    )
+
+    console.print()
+    try:
+        state = read_board_state(board_id, port)
+    except HwidUnsupportedError as error:
+        console.print(
+            f"  [yellow]{error}.[/yellow] It predates HWID support, so TRT cannot choose its mode.\n"
+            "  Install any HWID-aware image once, then run trt discover and retry:\n"
+            "    trt build stm32 mode_0000_base\n    trt flash stm32\n"
+        )
+        raise typer.Exit(2) from error
+    except (OSError, RuntimeError, TimeoutError, ValueError) as error:
+        console.print(f"  [red]Could not read board {board_id}:[/red] {error}\n")
+        raise typer.Exit(1) from error
+
+    if state.family not in SUPPORTED_FAMILIES:
+        console.print(f"  [red]Board {state.board_id} is {state.family or 'of unknown family'}; "
+                      f"update supports {', '.join(SUPPORTED_FAMILIES)} only.[/red]\n")
+        raise typer.Exit(1)
+
+    cube_dir = resolve_cubeide_dir(project_dir)
+    try:
+        plan = plan_update(state, cube_dir)
+    except ValueError as error:
+        console.print(f"  [red]{error}[/red]\n")
+        raise typer.Exit(1) from error
+    _print_update_plan(plan)
+
+    if plan.required is None:
+        console.print(f"  [red]No mode for HWID {state.hwid}.[/red] "
+                      f"Available: {', '.join(list_modes(cube_dir)) or 'none'}.\n")
+        raise typer.Exit(1)
+    if plan.matches:
+        console.print("  [bold green]MATCH[/bold green] - the installed mode matches the hardware. "
+                      "No update required.\n")
+        return
+    console.print(f"  [bold red]MISMATCH[/bold red] - update required: "
+                  f"{state.installed or 'no mode'} -> {plan.required}.\n")
+    if check:
+        console.print(f"  Update with: trt board update {state.board_id}\n")
+        raise typer.Exit(1)
+
+    elf = build_stm32_mode(cube_dir, plan.required)
+    flash_stm32_elf(elf, plan.required)
+    console.print("  [cyan]Waiting for the board to reboot...[/cyan]")
+    try:
+        after = wait_for_board(state.board_id, state.port)
+    except TimeoutError as error:
+        console.print(f"\n  [red]{error}[/red]\n")
+        raise typer.Exit(1) from error
+
+    verified = plan_update(after, cube_dir)
+    _print_update_plan(verified)
+    if not verified.matches:
+        console.print(f"  [red]Verification failed: board reports {after.installed or 'no mode'}, "
+                      f"expected {plan.required}.[/red]\n")
+        raise typer.Exit(1)
+    console.print(f"  [bold green]Updated and verified:[/bold green] {plan.required} is active.\n")
+
+
+def _print_update_plan(plan: UpdatePlan) -> None:
+    from trt.commands.board_view import hwid_pair, match_text
+    from trt.services.board_summary import BoardSummary
+
+    state = plan.state
+    summary = BoardSummary(
+        board_id=state.board_id, name="", family=state.family, firmware="", build_id="",
+        active_mode=state.installed, hwid_read=state.hwid, port=state.port,
+    )
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column(style="cyan", no_wrap=True)
+    table.add_column()
+    table.add_row("Board", f"{state.board_id} ({state.family}, {state.port})")
+    table.add_row("HWID", f"{hwid_pair(summary)}  {match_text(summary)}  [dim](read / expected)[/dim]")
+    table.add_row("Installed mode", state.installed or "[yellow]none declared[/yellow]")
+    table.add_row("Required mode", plan.required or "[red]none for this HWID[/red]")
+    console.print(table)
+    console.print()
+
+
+@board_app.command("modules", hidden=True, help="List loaded modules on the board")
 def board_modules(
     board_id: str = typer.Argument(..., help="Board identifier"),
 ) -> None:
@@ -168,7 +304,7 @@ def board_modules(
 
 
 gpio_app = typer.Typer(help="GPIO control", no_args_is_help=True)
-board_app.add_typer(gpio_app, name="gpio")
+board_app.add_typer(gpio_app, name="gpio", hidden=True)  # simulated
 
 
 @gpio_app.command("list", help="List all GPIO pins and their current state")
@@ -215,7 +351,7 @@ def gpio_write(
 
 
 pwm_app = typer.Typer(help="PWM control", no_args_is_help=True)
-board_app.add_typer(pwm_app, name="pwm")
+board_app.add_typer(pwm_app, name="pwm", hidden=True)  # simulated
 
 
 @pwm_app.command("list", help="List all PWM channels")
@@ -263,7 +399,7 @@ def pwm_set(
 
 
 adc_app = typer.Typer(help="ADC (Analog-to-Digital) control", no_args_is_help=True)
-board_app.add_typer(adc_app, name="adc")
+board_app.add_typer(adc_app, name="adc", hidden=True)  # simulated
 
 
 @adc_app.command("list", help="List all ADC channels")
@@ -294,7 +430,7 @@ def adc_read(
 
 
 dac_app = typer.Typer(help="DAC (Digital-to-Analog) control", no_args_is_help=True)
-board_app.add_typer(dac_app, name="dac")
+board_app.add_typer(dac_app, name="dac", hidden=True)  # simulated
 
 
 @dac_app.command("list", help="List all DAC channels")
@@ -336,7 +472,7 @@ def dac_set(
 
 
 i2c_app = typer.Typer(help="I2C master interface", no_args_is_help=True)
-board_app.add_typer(i2c_app, name="i2c")
+board_app.add_typer(i2c_app, name="i2c", hidden=True)  # simulated
 
 
 @i2c_app.command("scan", help="Scan the I2C bus for devices")
@@ -386,7 +522,7 @@ def i2c_write(
 
 
 spi_app = typer.Typer(help="SPI master interface", no_args_is_help=True)
-board_app.add_typer(spi_app, name="spi")
+board_app.add_typer(spi_app, name="spi", hidden=True)  # simulated
 
 
 @spi_app.command("transfer", help="Perform a full-duplex SPI transfer")
@@ -417,7 +553,7 @@ def spi_config(
 
 
 debug_app = typer.Typer(help="Debug and diagnostics", no_args_is_help=True)
-board_app.add_typer(debug_app, name="debug")
+board_app.add_typer(debug_app, name="debug", hidden=True)  # simulated
 
 
 @debug_app.command("logs", help="Stream firmware debug logs from the board")
@@ -485,21 +621,26 @@ def _render_board_info(board_id: str, board: Board) -> None:
 
 
 def _render_real_board_info(result: RealBoardInfoResult) -> None:
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_column("key", style="dim", min_width=18)
-    table.add_column("value", style="bold white")
-    table.add_row("Board ID", result.board_id)
-    table.add_row("Port", result.port)
-    table.add_row("BOARD_VERSION", result.board_version or "-")
-    table.add_row("INFO", result.board_info)
-    table.add_row("FW_VERSION", result.fw_version)
-    table.add_row("BUILD_ID", result.build_id)
-    for field_name, value in result.info.items():
-        table.add_row(f"INFO.{field_name.upper()}", value)
-    if result.capabilities:
-        table.add_row("CAPABILITIES", ", ".join(result.capabilities))
+    from trt.commands.board_view import render_next_steps, summary_table
+
+    summary = result.summary()
     console.print()
-    console.print(Panel(table, title=f"[bold cyan]{result.board_id}[/bold cyan]", border_style="bright_blue", expand=False))
+    # Same values and wording as this board's row in `trt boards`.
+    console.print(
+        Panel(summary_table(summary), title=f"[bold cyan]Board {result.board_id}[/bold cyan]",
+              border_style="bright_blue", expand=False)
+    )
+    # Detail only the single-board view shows.
+    details = Table(show_header=False, box=None, padding=(0, 2))
+    details.add_column("key", style="dim", no_wrap=True)
+    details.add_column("value")
+    details.add_row("Port", result.port)
+    details.add_row("Revision", result.board_version or result.info.get("revision", "-"))
+    details.add_row("Protocol", result.info.get("protocol", "-"))
+    details.add_row("Serial", result.info.get("serial", "-"))
+    details.add_row("Capabilities", ", ".join(result.capabilities) or "-")
+    console.print(Panel(details, title="[dim]Details[/dim]", border_style="dim", expand=False))
+    render_next_steps(console, [summary])
     console.print()
 
 

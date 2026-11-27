@@ -14,7 +14,8 @@ CMD_INFO = 0x0004
 CMD_BUILD_ID = 0x0007
 CMD_UPTIME = 0x0008
 CMD_RUNTIME = 0x0009
-CMD_ACTIVE_PROGRAM = 0x000A
+CMD_ACTIVE_MODE = 0x000A
+CMD_HWID = 0x000B
 
 RESP_NACK = 0x8002
 RESP_DATA = 0x8003
@@ -63,18 +64,29 @@ def _uptime(payload: bytes) -> str:
     return format_uptime(int.from_bytes(payload, byteorder="big"))
 
 
+def decode_hwid(payload: bytes) -> int:
+    if len(payload) != 2:
+        raise ValueError("HWID response must be 2 bytes")
+    return int.from_bytes(payload, byteorder="big")
+
+
+def _hwid(payload: bytes) -> str:
+    return str(decode_hwid(payload))
+
+
 _SIMPLE = {
     "version": (CMD_FW_VERSION, _version),
     "build-id": (CMD_BUILD_ID, _text),
     "revision": (CMD_BOARD_VERSION, _text),
     "runtime": (CMD_RUNTIME, _runtime),
     "uptime": (CMD_UPTIME, _uptime),
-    "active-program": (CMD_ACTIVE_PROGRAM, _text),
+    "mode": (CMD_ACTIVE_MODE, _text),
+    "hwid": (CMD_HWID, _hwid),
 }
 # Queries answered from the INFO fields: item -> decoded field name.
 _INFO_FIELDS = {"name": "board_type", "type": "family"}
 
-ITEMS = ("id", "name", "type", "revision", "version", "build-id", "runtime", "active-program", "uptime", "transport")
+ITEMS = ("id", "name", "type", "revision", "version", "build-id", "runtime", "mode", "hwid", "uptime", "transport")
 
 
 class BoardQueryService:

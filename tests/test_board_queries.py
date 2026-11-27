@@ -60,7 +60,7 @@ def fake_board(monkeypatch: pytest.MonkeyPatch) -> None:
         0x0007: (DATA, b"000007"),
         0x0008: (DATA, (93_784_567).to_bytes(4, "big")),
         0x0009: (DATA, b"\x01"),
-        0x000A: (DATA, b"program_blink"),
+        0x000A: (DATA, b"mode_0012_blink"),
     }
     monkeypatch.setattr(board_query_service, "SerialTransport", FakeTransport)
     monkeypatch.setattr(
@@ -80,7 +80,7 @@ def fake_board(monkeypatch: pytest.MonkeyPatch) -> None:
         ("version", "0.1.0"),
         ("build-id", "000007"),
         ("runtime", "RUNNING"),
-        ("active-program", "program_blink"),
+        ("mode", "mode_0012_blink"),
         ("uptime", "1d 02:03:04.567 (93784567 ms)"),
     ],
 )
@@ -100,7 +100,7 @@ def test_transport_query_asks_nothing_of_the_firmware() -> None:
 def test_nack_is_reported_as_unsupported() -> None:
     FakeTransport.replies.pop(0x000A)
     with pytest.raises(QueryUnsupportedError):
-        BoardQueryService().query("201", "active-program", port="COM8")
+        BoardQueryService().query("201", "mode", port="COM8")
     assert FakeTransport.closed
 
 

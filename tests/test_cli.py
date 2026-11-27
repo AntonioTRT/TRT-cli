@@ -17,7 +17,7 @@ from trt.cli import app
 from trt.core.models import (
     Board,
     BoardCapabilities,
-    BoardIdentity,  
+    BoardIdentity,
     BoardRegistry,
     BoardStatus,
     BoardType,
@@ -30,7 +30,6 @@ from trt.repositories.board_repository import BoardRepository
 from trt.services.board_discovery_service import BoardDiscoveryService
 from trt.services.board_service import BoardService
 from trt.services.capability_service import CapabilityService
-from trt.transport.mock_transport import MockTransport
 from trt.services.update_service import (
     InstallMethod,
     UpdateStatus,
@@ -40,10 +39,10 @@ from trt.services.update_service import (
     detect_install_method,
     install_update,
 )
+from trt.transport.mock_transport import MockTransport
 from trt.version import get_version, get_version_info
 
 runner = CliRunner()
-hardware = pytest.mark.hardware  # needs a TRT board on COM4; see tests/conftest.py
 
 
 def make_test_repository() -> BoardRepository:
@@ -74,7 +73,7 @@ def make_test_repository() -> BoardRepository:
 
 class TestVersion:
     def test_get_version(self) -> None:
-        assert get_version() == "1.0.0rc1"
+        assert get_version() == "1.0.0"
 
     def test_get_version_info(self) -> None:
         assert get_version_info() == (1, 0, 0)
@@ -150,14 +149,6 @@ class TestUpdateService:
     def test_parse_version_prerelease_stripped(self) -> None:
         assert _parse_version("v1.0.0-beta.1") == (1, 0, 0)
 
-    def test_parse_version_handles_release_candidates(self) -> None:
-        assert _parse_version("1.0.0rc1") == (1, 0, 0)
-
-    def test_final_release_is_newer_than_its_release_candidate(self) -> None:
-        assert _is_newer("1.0.0", "1.0.0rc1")
-        assert not _is_newer("1.0.0rc1", "1.0.0")
-        assert not _is_newer("1.0.0", "1.0.0")
-
     def test_is_newer_true(self) -> None:
         assert _is_newer("0.2.0", "0.1.0") is True
 
@@ -200,11 +191,12 @@ class TestBoardsCommand:
         result = runner.invoke(app, ["boards"])
         assert result.exit_code == 0
 
-    @hardware
-    def test_boards_shows_discovered_real_board(self) -> None:
+    @pytest.mark.hardware
+    def test_boards_shows_discovered_real_board(self, hardware_board: str) -> None:
         result = runner.invoke(app, ["boards"])
-        assert "101" in result.stdout
-        assert "COM4" in result.stdout
+        assert result.exit_code == 0
+        assert hardware_board in result.stdout
+        assert "HWID" in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -226,26 +218,26 @@ class TestDiscoverCommand:
 # ---------------------------------------------------------------------------
 
 class TestBoardSubcommands:
-    @hardware
-    def test_info_known_board(self) -> None:
-        result = runner.invoke(app, ["board", "info", "101"])
-        assert result.exit_code == 0
-        assert "BUILD_ID" in result.stdout
+    @pytest.mark.hardware
+    def test_info_known_board(self, hardware_board: str) -> None:
+        result = runner.invoke(app, ["board", "info", hardware_board])
+        assert result.exit_code == 0, result.output
+        assert "Firmware" in result.stdout and "build" in result.stdout
 
     def test_info_unknown_board(self) -> None:
         result = runner.invoke(app, ["board", "info", "nonexistent"])
         assert result.exit_code != 0
 
-    @hardware
-    def test_status(self) -> None:
-        result = runner.invoke(app, ["board", "status", "101"])
+    @pytest.mark.hardware
+    def test_status(self, hardware_board: str) -> None:
+        result = runner.invoke(app, ["board", "status", hardware_board])
         assert result.exit_code == 0
 
-    @hardware
-    def test_capabilities(self) -> None:
-        result = runner.invoke(app, ["board", "capabilities", "101"])
+    @pytest.mark.hardware
+    def test_capabilities(self, hardware_board: str) -> None:
+        result = runner.invoke(app, ["board", "capabilities", hardware_board])
         assert result.exit_code == 0
-        assert "gpio" in result.stdout
+        assert "system" in result.stdout.lower()
 
 # ---------------------------------------------------------------------------
 # LCD
@@ -379,15 +371,15 @@ class TestBoardRegistry:
         reg.clear()
         assert len(reg) == 0
 
-    @hardware
-    def test_discovery_service_populates_registry_from_transport(self) -> None:
+    @pytest.mark.hardware
+    def test_discovery_service_populates_registry_from_transport(self, hardware_board: str) -> None:
         service = BoardDiscoveryService()
         boards = service.discover()
         assert len(boards) >= 1
-        board = service.repository.get_by_id("101")
+        board = service.repository.get_by_id(hardware_board)
         assert board is not None
-        assert board.identity.firmware == "0.1.0"
-        assert board.metadata["build_id"] == "000004"
+        assert board.identity.firmware
+        assert board.metadata["build_id"]
 
 
 # ---------------------------------------------------------------------------

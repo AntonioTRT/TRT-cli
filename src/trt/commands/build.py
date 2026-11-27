@@ -3,52 +3,75 @@
 from __future__ import annotations
 
 import json
-import re
+import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
 from rich.console import Console
 
+from trt.core.modes import MODE_NAME as _MODE_NAME
+from trt.core.modes import mode_id
+
 console = Console()
 app = typer.Typer(help="Build board firmware without flashing", no_args_is_help=True)
 
-PROGRAMS_SUBDIR = Path("Sources") / "apps"
+MODES_SUBDIR = Path("Sources") / "modes"
 ARTIFACTS_SUBDIR = Path("artifacts")
 LATEST_MANIFEST = "latest.json"
-# Artifact name of the common image, where the daughter-board HWID selects the application.
-FIRMWARE_NAME = "firmware"
-_APP_NAME = re.compile(r"^app_([0-9a-f]{4})_[a-z0-9_]+$")
-_APP_ID = re.compile(r"^(?:0x)?([0-9a-f]{4})$")
-_HWID = re.compile(r"^(?:0x)?([0-9a-f])$")
+# Where STM32CubeIDE bundles its toolchain, searched when a tool is not on PATH.
+# Where STM32CubeIDE bundles its toolchain: (install root, glob of the plugin tool folders).
+# Windows: C:/ST/STM32CubeIDE_2.2.0/STM32CubeIDE/plugins/...; Linux: /opt/st/stm32cubeide_2.2.0/plugins/...;
+# macOS: /Applications/STM32CubeIDE.app/Contents/Eclipse/plugins/...
+CUBEIDE_LOCATIONS: tuple[tuple[Path, str], ...] = (
+    (Path("C:/ST"), "STM32CubeIDE*/STM32CubeIDE/plugins/*/tools/bin"),
+    (Path("C:/Program Files/STMicroelectronics"), "STM32CubeIDE*/STM32CubeIDE/plugins/*/tools/bin"),
+    (Path("/opt/st"), "stm32cubeide*/plugins/*/tools/bin"),
+    (Path.home() / "st", "stm32cubeide*/plugins/*/tools/bin"),
+    (Path("/Applications"), "STM32CubeIDE.app/Contents/Eclipse/plugins/*/tools/bin"),
+)
 
 
-def list_programs(cube_dir: Path) -> list[str]:
-    """Application names available in the CubeIDE project (Sources/apps/app_<id>_<name>.c)."""
+def list_modes(cube_dir: Path) -> list[str]:
+    """Modes available in the CubeIDE project (Sources/modes/mode_<ID>_<name>.c)."""
     return sorted(
-        path.stem
-        for path in (cube_dir / PROGRAMS_SUBDIR).glob("app_*.c")
-        if _APP_NAME.match(path.stem)
+        path.stem for path in (cube_dir / MODES_SUBDIR).glob("mode_*.c") if _MODE_NAME.match(path.stem)
     )
 
 
-def resolve_app(text: str, available: list[str]) -> str | None:
-    """Accept a full application name (app_0003_keypad_reader) or just its ID (0003)."""
-    if text in available:
-        return text
-    match = _APP_ID.match(text.lower())
-    if match:
-        return next((name for name in available if name.startswith(f"app_{match.group(1)}_")), None)
-    return None
+def mode_macro(mode: str) -> str:
+    """mode_0002_analog -> MODE_0002_ANALOG (the ID defined in mode_selector.h)."""
+    return mode.upper()
 
 
-def override_id(app_name: str) -> str:
-    """app_0003_keypad_reader -> 0003 (the value of CMake's ACTIVE_APP_OVERRIDE)."""
-    match = _APP_NAME.match(app_name)
-    assert match is not None, app_name
-    return match.group(1)
+def mode_for_hwid(cube_dir: Path, hwid: int) -> str | None:
+    """The mode that matches a HWID, or None. Two files with the same mode ID are an error."""
+    matches = [mode for mode in list_modes(cube_dir) if mode_id(mode) == hwid]
+    if len(matches) > 1:
+        raise ValueError(f"Several modes claim HWID {hwid}: {', '.join(matches)}")
+    return matches[0] if matches else None
+
+
+def cubeide_tool_dirs() -> list[Path]:
+    """tools/bin directories of the STM32CubeIDE plugins (toolchain, CMake, Ninja, CubeProgrammer)."""
+    dirs: list[Path] = []
+    for root, pattern in CUBEIDE_LOCATIONS:
+        if root.is_dir():
+            dirs.extend(sorted(root.glob(pattern), reverse=True))
+    return dirs
+
+
+def ensure_stm32_tools(tools: tuple[str, ...]) -> list[str]:
+    """Put STM32CubeIDE's bundled tools on PATH when they are missing; return the tools still missing."""
+    missing = [tool for tool in tools if shutil.which(tool) is None]
+    if not missing:
+        return []
+    for directory in cubeide_tool_dirs():
+        if any((directory / f"{tool}.exe").is_file() or (directory / tool).is_file() for tool in missing):
+            os.environ["PATH"] = f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"
+    return [tool for tool in tools if shutil.which(tool) is None]
 
 
 def resolve_cubeide_dir(project_dir: Path | None) -> Path:
@@ -62,11 +85,11 @@ def resolve_cubeide_dir(project_dir: Path | None) -> Path:
 
     for base in bases:
         for candidate in (base, base / "am modulation"):
-            if (candidate / "CMakeLists.txt").is_file() and (candidate / PROGRAMS_SUBDIR).is_dir():
+            if (candidate / "CMakeLists.txt").is_file() and (candidate / MODES_SUBDIR).is_dir():
                 return candidate
 
     raise typer.BadParameter(
-        "Could not locate the STM32CubeIDE project (CMakeLists.txt and Sources/apps). "
+        "Could not locate the STM32CubeIDE project (CMakeLists.txt and Sources/modes). "
         "Use --project-dir to specify it."
     )
 
@@ -86,24 +109,9 @@ def artifact_path(cube_dir: Path, program: str) -> Path:
     return cube_dir / ARTIFACTS_SUBDIR / program / f"{program}.elf"
 
 
-@app.command(
-    "stm32",
-    help=(
-        "Build the STM32 firmware (with TRT-Core) without flashing. With no application, builds the "
-        "common image: the daughter-board HWID selects the application at startup. With an application "
-        "(name or ID, e.g. app_0003_keypad_reader or 0003) it builds a development image that always "
-        "runs that application and skips HWID selection."
-    ),
-)
+@app.command("stm32", help="Build an STM32 mode (with TRT-Core) without flashing")
 def build_stm32(
-    program: str | None = typer.Argument(
-        None, help="Application name or ID, e.g. app_0001_signal_generator or 0001; omit for the common image"
-    ),
-    hwid: str | None = typer.Option(
-        None,
-        "--hwid",
-        help="HWID (one hex digit) a board without HWID lines (NUCLEO) reports, to simulate a daughter board",
-    ),
+    program: str = typer.Argument(..., metavar="MODE", help="Mode name, e.g. mode_0002_analog"),
     project_dir: Path | None = typer.Option(
         None,
         "--project-dir",
@@ -115,48 +123,37 @@ def build_stm32(
     ),
 ) -> None:
     cube_dir = resolve_cubeide_dir(project_dir)
-    available = list_programs(cube_dir)
-    name = FIRMWARE_NAME
-    override = ""
-    if program is not None:
-        resolved = resolve_app(program, available)
-        if resolved is None:
-            raise typer.BadParameter(
-                f"Unknown application '{program}'. Available: {', '.join(available) or 'none'}."
-            )
-        name, override = resolved, override_id(resolved)
-    hwid_digit = ""
-    if hwid is not None:
-        match = _HWID.match(hwid.lower())
-        if match is None:
-            raise typer.BadParameter(f"--hwid '{hwid}': expected one hex digit, e.g. 0x2.")
-        if program is not None:
-            raise typer.BadParameter("--hwid has no effect together with an application (it skips HWID selection).")
-        hwid_digit = match.group(1)
+    available = list_modes(cube_dir)
+    if not _MODE_NAME.match(program) or program not in available:
+        raise typer.BadParameter(f"Unknown mode '{program}'. Available: {', '.join(available) or 'none'}.")
+    build_stm32_mode(cube_dir, program)
+    console.print("  Flash it with: trt flash stm32\n")
 
-    missing = [tool for tool in ("cmake", "arm-none-eabi-gcc") if shutil.which(tool) is None]
+
+def build_stm32_mode(cube_dir: Path, program: str) -> Path:
+    """Build one mode (TRT-Core and Base Mode included) and store it as an artifact; returns the stored .elf."""
+    ensure_stm32_tools(("ninja",))
+    missing = ensure_stm32_tools(("cmake", "arm-none-eabi-gcc"))
     if missing:
         console.print(
             f"\n  [red]Missing build tools on PATH:[/red] {', '.join(missing)}. "
-            "Install/enable the STM32CubeIDE toolchain (cmake, arm-none-eabi-gcc).\n"
+            "Install STM32CubeIDE (its bundled tools are found under C:/ST) "
+            "or put cmake and arm-none-eabi-gcc on PATH.\n"
         )
         raise typer.Exit(1)
 
-    # A build directory per image keeps CubeIDE's own Debug/ build untouched. Both options are
-    # always passed (empty = unset) so a value cached by an earlier build cannot leak into this one.
-    build_dir = cube_dir / "build" / name
+    # A build directory per program keeps CubeIDE's own Debug/ build untouched.
+    build_dir = cube_dir / "build" / program
     configure = [
         "cmake", "-S", str(cube_dir), "-B", str(build_dir),
         f"-DCMAKE_TOOLCHAIN_FILE={cube_dir / 'cubeide-gcc.cmake'}",
         "-DCMAKE_BUILD_TYPE=Debug",
-        f"-DACTIVE_APP_OVERRIDE={override}",
-        f"-DTRT_HWID_DEFAULT={hwid_digit and '0x' + hwid_digit}",
+        f"-DACTIVE_MODE={mode_macro(program)}",
     ]
     if shutil.which("ninja"):
         configure[1:1] = ["-G", "Ninja"]
 
-    mode = f"always runs {name}" if override else "application chosen from the HWID at startup"
-    console.print(f"  [cyan]Building[/cyan] {name} (TRT-Core included; {mode}) in {build_dir}")
+    console.print(f"  [cyan]Building[/cyan] {program} (TRT-Core included) in {build_dir}")
     run_checked(configure, "CMake configure failed")
     run_checked(["cmake", "--build", str(build_dir)], "Build failed")
 
@@ -165,16 +162,16 @@ def build_stm32(
         console.print("\n  [red]Build finished but no .elf was produced.[/red]\n")
         raise typer.Exit(1)
 
-    stored = artifact_path(cube_dir, name)
+    stored = artifact_path(cube_dir, program)
     stored.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(elf, stored)
     manifest = {
-        "program": name,
+        "mode": program,
         "elf": str(stored),
-        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     (cube_dir / ARTIFACTS_SUBDIR / LATEST_MANIFEST).write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
-    console.print(f"\n  [bold green]Built {name}.[/bold green] Artifact: {stored}")
-    console.print("  Flash it with: trt flash stm32\n")
+    console.print(f"\n  [bold green]Built {program}.[/bold green] Artifact: {stored}")
+    return stored

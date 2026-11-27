@@ -3,6 +3,7 @@
 A modular hardware control ecosystem for embedded boards and expansion modules.
 """
 
-__version__ = "1.0.0rc1"
+from trt.version import __version__ as __version__
+
 __author__ = "TRT Contributors"
 __description__ = "Tool Runtime Terminal - Hardware control ecosystem for embedded boards"

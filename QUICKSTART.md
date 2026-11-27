@@ -1,129 +1,152 @@
-# TRT CLI - Referencia rápida
+# TRT CLI - Guía rápida (Windows)
+
+Primeros pasos con `trt` en un PC con Windows: instalar, encontrar una placa, comprobar que su
+firmware corresponde a la placa hija conectada y actualizarlo si no. Referencia completa en inglés:
+[README](README.md) y [docs/cli-reference.md](docs/cli-reference.md).
 
 ## Requisitos
 
-```text
-Paquete: trt-cli 1.0.0rc1
-Python: 3.13+
-Dependencias: Typer, Rich, pyserial
-Comando: trt
-Hardware validado: Arduino Uno en COM4 con firmware TRT-Core
-```
+| Qué | Para qué |
+|---|---|
+| Python 3.13 o superior | Siempre |
+| Git | Descargar el código |
+| Una placa con firmware TRT-Core (p. ej. STM32 NUCLEO-L073RZ) conectada por USB | Hablar con hardware |
+| Repositorio TRT-core, junto a TRT-cli | Compilar, grabar y actualizar firmware (`trt list-modes`, `trt build`, `trt flash`, `trt board update`) |
+| STM32CubeIDE (instalado en `C:\ST`) | Compilar y grabar STM32; el CLI encuentra sus herramientas solo |
 
-## Cómo ejecutar TRT en un PC (Windows)
+Las dependencias de Python (Typer, Rich, pyserial) se instalan con TRT.
 
-1. **Instala Python 3.13 o superior** desde <https://www.python.org/downloads/>.
-   En el instalador, marca **"Add python.exe to PATH"**.
+## 1. Instalar
 
-2. **Abre una terminal** (PowerShell o Símbolo del sistema) y comprueba la versión:
+1. **Instala Python 3.13+** desde <https://www.python.org/downloads/> y marca
+   **"Add python.exe to PATH"**. Comprueba en PowerShell:
 
    ```powershell
    python --version
    ```
 
-3. **Descarga el código** y entra en la carpeta del repositorio:
+2. **Descarga el código** (TRT-core al lado de TRT-cli):
 
    ```powershell
-   git clone <repo-url> TRT-cli
+   mkdir trt; cd trt
+   git clone https://github.com/AntonioTRT/TRT-cli.git
+   git clone https://github.com/AntonioTRT/TRT-core.git
    cd TRT-cli
    ```
 
-4. **Instala TRT y sus dependencias:**
+3. **Crea un entorno virtual e instala TRT:**
 
    ```powershell
-   pip install -e .
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   python -m pip install -e .
    ```
 
-   Esto instala Typer, Rich y pyserial, y añade el comando `trt` a la carpeta
-   `Scripts` de Python.
+   Si PowerShell no permite ejecutar `Activate.ps1`, ejecuta una vez
+   `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
-5. **Comprueba que funciona.** Se puede ejecutar desde cualquier carpeta:
+4. **Comprueba que funciona** (desde cualquier carpeta, con el entorno activo):
 
    ```powershell
    trt version
-   trt --help
+   trt
    ```
 
-   Salida esperada de `trt version`:
+   `trt version` muestra `Version: 1.0.0`; `trt` solo muestra la guía rápida (*Quick Start*).
+   Si aparece `'trt' is not recognized`, activa el entorno virtual o usa `python -m trt`.
 
-   ```text
-    TRT CLI
-    Version:  1.0.0rc1
-   ```
+## 2. Encontrar la placa
 
-   Si aparece `'trt' is not recognized`, la carpeta `Scripts` de Python no está
-   en el PATH. Normalmente es
-   `%LOCALAPPDATA%\Programs\Python\Python313\Scripts`. Puedes añadirla al PATH
-   o usar `python -m trt` en su lugar.
+Conecta la placa por USB y ejecuta:
 
-6. **Conecta la placa.** Conecta por USB el Arduino Uno con el firmware
-   TRT-Core. Debe aparecer como **COM4**; compruébalo en
-   *Administrador de dispositivos → Puertos (COM y LPT)*. Después ejecuta:
-
-   ```powershell
-   trt discover
-   trt boards
-   trt board info 101
-   ```
-
-## Comandos principales
-
-```bash
-trt help
-trt version
+```powershell
 trt discover
-trt boards
-trt board info 101
-trt board capabilities 101
 ```
-
-Sin ninguna placa conectada, `trt discover` muestra `Found 0 board(s)` y
-`trt boards` muestra `No boards detected`. `trt board info 101` falla con
-`could not open port 'COM4'`. Es lo esperado cuando no hay nada conectado en COM4.
-
-## Ruta de hardware validada
 
 ```text
-TRT-CLI -> COM4 -> Arduino Uno -> TRT-Core -> respuesta real del protocolo
+Connected Boards
+Addr  Name           Firmware       Mode              HWID         Status
+201   am-modulation  0.1.0 #000001  mode_0002_analog  0010 / 0010  MATCH
+HWID: read from hardware / expected by the installed mode
 ```
 
-`trt board info 101` devuelve datos reales del firmware:
+- **Addr**: la dirección de la placa (201). Es el número que usan los demás comandos.
+- **Mode**: el modo de firmware instalado.
+- **HWID**: HWID leído de la placa hija / HWID que espera el modo instalado.
+- **Status**: `MATCH` = todo correcto; `MISMATCH` = hay que actualizar.
 
-```text
-Board ID      101
-BOARD_INFO    UNSPECIFIED
-FW_VERSION    0.1.0
-BUILD_ID      000004
+Sin placa conectada, `trt discover` muestra `Found 0 board(s)`.
+
+## 3. Revisar y actualizar
+
+```powershell
+trt board info 201        # detalle de la placa
+trt board hwid 201        # qué placa hija está conectada
+trt board mode 201        # qué modo está instalado
+trt board update 201      # si hay MISMATCH: compila, graba, reinicia y verifica
 ```
 
-> Terminología: la etiqueta `Board ID` de arriba es el campo `BOARD_ID` del protocolo (una dirección de nodo, aquí 101). No es el Board ID de la plataforma hardware, ni un HWID, ni un Application ID. Ver `TRT-core/docs/identifiers.md`.
+`trt board update 201` termina con `Updated and verified: ... is active.` Con `--check` solo informa
+(código de salida 0 = MATCH, 1 = no MATCH).
+
+**Primera vez con una placa de firmware antiguo** (estado `NO HWID`):
+
+```powershell
+trt build stm32 mode_0000_base
+trt flash stm32
+trt discover
+trt board update 201
+```
+
+## 4. Vigilar la placa
+
+```powershell
+trt listen
+```
+
+Muestra `Board 201: HEARTBEAT` una vez por segundo: el firmware funciona y la conexión placa → PC
+está bien. Ctrl+C para salir (mientras escucha, el puerto está ocupado para otros comandos).
+
+## Conceptos
+
+| Término | Qué es |
+|---|---|
+| Dirección (*address*) | Cómo habla TRT con la placa: `201`. No identifica hardware. |
+| HWID | Código de la placa hija conectada (`0010` = analógica). |
+| Board ID | Identificador futuro de la placa base. Aún no existe. |
+| Modo | Firmware instalado, `mode_<ID>_<nombre>`; el ID es el HWID para el que está hecho. `mode_0000_base` = Modo Base (sin placa hija, recuperación y mantenimiento). |
+
+Más ayuda en el propio CLI: `trt` (guía rápida), `trt --help` (todos los comandos) y `trt help`
+(conceptos, MATCH/MISMATCH, flujo de trabajo, heartbeat).
+
+## Problemas frecuentes
+
+| Síntoma | Solución |
+|---|---|
+| `Found 0 board(s)` | Comprueba el cable y el puerto COM (*Administrador de dispositivos → Puertos*). Cierra monitores serie y cualquier `trt listen`. |
+| `could not open port` | Otro programa usa el puerto; ciérralo. |
+| `... after 3 attempts (only event frames)` | La placa envía heartbeats pero no responde (los reintentos son automáticos). Reiníciala o actualízala. |
+| `Missing build tools` / `STM32_Programmer_CLI not found` | Instala STM32CubeIDE en `C:\ST`. |
+| `Could not locate the STM32CubeIDE project` | Clona TRT-core junto a TRT-cli o usa `--project-dir`. |
+| `trt stm32 test` falla con `expected 0x0002` | Usa `trt stm32 test --board-id 201`. |
+
+Más casos: [README → Troubleshooting](README.md#troubleshooting).
 
 ## Actualizar / desinstalar
 
-La instalación es editable, así que los cambios en el código (por ejemplo,
-después de `git pull`) se aplican al momento. Solo hay que volver a ejecutar
-`pip install -e .` si cambian las dependencias.
+La instalación es editable: tras `git pull` los cambios se aplican al momento. Solo hay que repetir
+`python -m pip install -e .` si cambian las dependencias.
 
 ```powershell
-pip uninstall trt-cli
+python -m pip uninstall trt-cli
 ```
 
 ## Desarrollo
 
-Para añadir nuevos comandos `trt`, consulta [docs/adding-commands.md](docs/adding-commands.md).
-
 ```powershell
-pip install -e ".[dev]"
-pytest
+python -m pip install -e ".[dev]"
+pytest                    # pruebas sin hardware (no abre puertos serie)
+pytest -m hardware        # pruebas con una placa real (dirección 101 por defecto)
 ```
 
-Algunas pruebas necesitan el Arduino Uno con TRT-Core conectado en COM4. Sin
-él, fallan 5 pruebas y el resto pasan:
-
-```text
-TestBoardsCommand::test_boards_shows_discovered_real_board
-TestBoardSubcommands::test_info_known_board
-TestBoardSubcommands::test_status
-TestBoardSubcommands::test_capabilities
-TestBoardRegistry::test_discovery_service_populates_registry_from_transport
-```
+Para probar con otra placa: `$env:TRT_TEST_BOARD = "201"; pytest -m hardware`. Para añadir comandos: [docs/adding-commands.md](docs/adding-commands.md).

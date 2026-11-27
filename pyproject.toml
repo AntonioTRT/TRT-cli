@@ -1,24 +1,25 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "trt-cli"
-version = "1.0.0rc1"
+version = "1.0.0"
 description = "TRT - Tool Runtime Terminal: A modular hardware control ecosystem for embedded boards"
 readme = "README.md"
 requires-python = ">=3.13"
-license = { text = "MIT" }
-authors = [
-    { name = "TRT Contributors", email = "contact@trt-project.dev" }
-]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "TRT Contributors" }]
 keywords = ["cli", "hardware", "embedded", "boards", "terminal"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -27,16 +28,23 @@ classifiers = [
 ]
 
 dependencies = [
-    "typer[all]>=0.12.0",
+    "typer>=0.12.0",  # bundles rich and shellingham since 0.12 (the [all] extra no longer exists)
     "rich>=13.0.0",
     "pyserial>=3.5",
 ]
+
+[project.urls]
+Homepage = "https://github.com/AntonioTRT/TRT-cli"
+Documentation = "https://github.com/AntonioTRT/TRT-cli/blob/main/docs/cli-reference.md"
+Changelog = "https://github.com/AntonioTRT/TRT-cli/blob/main/CHANGELOG.md"
+Issues = "https://github.com/AntonioTRT/TRT-cli/issues"
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "mypy>=1.7.0",
+    "types-pyserial>=3.5",
     "ruff>=0.1.0",
     "black>=23.11.0",
     "isort>=5.13.0",
@@ -65,9 +73,22 @@ strict_equality = true
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-select = ["E", "F", "W", "I", "UP", "C90", "YTT", "S", "BLE", "B", "A", "C4", "DTZ", "T10", "EM", "ISC", "G", "PIE", "T20", "Q"]
-ignore = ["E501", "S101"]
 exclude = [".git", "__pycache__", "build", "dist", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "C90", "YTT", "S", "BLE", "B", "A", "C4", "DTZ", "T10", "EM", "ISC", "G", "PIE", "T20", "Q"]
+ignore = [
+    "E501",   # line length: formatter territory
+    "S101",   # assert is the pytest idiom
+    "EM101",  # exception messages written inline are clearer for a CLI
+    "EM102",
+    "B008",   # typer.Argument/Option in defaults is the Typer API
+    "S603",   # subprocess runs fixed build/flash tools with argument lists (no shell)
+    "S607",
+    "UP042",  # str + Enum kept for Python-version-neutral serialisation
+    "C901",   # complexity: tracked in review, not enforced
+    "A001",   # `help` is the name of a CLI command
+]
 
 [tool.black]
 line-length = 100
@@ -83,7 +104,8 @@ skip_gitignore = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
-addopts = "--cov=src/trt --cov-report=term-missing"
+# Hardware tests need a real TRT board and are opt-in: pytest -m hardware (see tests/conftest.py).
+addopts = "-m 'not hardware' --strict-markers --cov=src/trt --cov-report=term-missing"
 markers = [
-    "hardware: needs a real TRT board on a serial port; skipped unless TRT_HARDWARE_TESTS=1",
+    "hardware: needs a real TRT board on a serial port (run with: pytest -m hardware; address via TRT_TEST_BOARD)",
 ]

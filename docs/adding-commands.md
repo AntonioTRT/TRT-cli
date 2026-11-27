@@ -173,12 +173,13 @@ needed, because the group is already registered in `cli.py`.
 | `trt lcd ...` | [commands/lcd.py](../src/trt/commands/lcd.py) | `app` |
 | `trt protocol ...` | [commands/protocol.py](../src/trt/commands/protocol.py) | `app` |
 
-Example: add `trt board ping <id>` in `board.py`:
+Example: add `trt board ping <address>` in `board.py`. Board commands take the board address
+(shown by `trt boards`) and label it `ADDRESS` in the help:
 
 ```python
-@board_app.command("ping", help="Check that a board answers")
+@board_app.command("ping", rich_help_panel=QUERY_PANEL, help="Check that a board answers")
 def board_ping(
-    board_id: str = typer.Argument(..., help="Board identifier"),
+    board_id: str = typer.Argument(..., metavar="ADDRESS", help="Board address shown by trt boards, e.g. 201"),
 ) -> None:
     console.print(f"\n  [cyan]{board_id}[/cyan]  pong\n")
 ```
@@ -187,7 +188,10 @@ def board_ping(
 
 ## 6. Recipe D: a command that talks to the board
 
-Follow the same layers as the existing LED commands. Example: `trt led toggle`.
+Follow the same layers as the existing LED commands (which are simulated). Example: a new `trt led toggle`.
+For a command that talks to real firmware over serial, follow `trt board hwid` instead:
+[services/board_query_service.py](../src/trt/services/board_query_service.py) sends one TRT V0.1
+command with `SerialTransport.exchange_command()`.
 
 1. **Operation + request**: in [protocol/models.py](../src/trt/protocol/models.py),
    add a value to `ProtocolOperation` and a request dataclass:
@@ -229,7 +233,7 @@ Follow the same layers as the existing LED commands. Example: `trt led toggle`.
    opcode to `SerialTransport._OPCODES` in
    [transport/serial_transport.py](../src/trt/transport/serial_transport.py)
    and handle the response in its decode logic. The firmware must implement the
-   same opcode. See [trt-protocol.md](trt-protocol.md).
+   same opcode. The implemented protocol is TRT V0.1 (TRT-core `docs/command-identifiers.md`).
 
 ---
 

@@ -16,9 +16,9 @@ Future Expansion Points:
     - TransportConfig: extended to CAN / TCP when those transports land
 """
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Enumerations
@@ -84,8 +84,8 @@ class TransportConfig:
     """
 
     transport_type: TransportType = TransportType.USB
-    port: Optional[str] = None          # e.g. "COM3" or "/dev/ttyACM0"
-    baudrate: Optional[int] = None      # USB CDC: None (native), Serial: 115200
+    port: str | None = None          # e.g. "COM3" or "/dev/ttyACM0"
+    baudrate: int | None = None      # USB CDC: None (native), Serial: 115200
     timeout_ms: int = 1000
     retry_count: int = 3
 
@@ -177,7 +177,7 @@ class BoardIdentity:
     board_type: BoardType = BoardType.UNKNOWN
     revision: str = "A1"                   # Hardware revision from firmware
     firmware: str = "0.1.0"               # Firmware version string
-    serial: Optional[str] = None           # Device serial number from firmware
+    serial: str | None = None           # Device serial number from firmware
 
     def __str__(self) -> str:
         return f"{self.board_id} ({self.board_type.value})"
@@ -200,7 +200,7 @@ class Board:
 
     identity: BoardIdentity
     status: BoardStatus = BoardStatus.DISCONNECTED
-    transport: Optional[TransportConfig] = None
+    transport: TransportConfig | None = None
     capabilities: BoardCapabilities = field(default_factory=BoardCapabilities)
     metadata: dict[str, str] = field(default_factory=dict)
 
@@ -252,7 +252,7 @@ class BoardRegistry:
     # Queries
     # ------------------------------------------------------------------
 
-    def get(self, board_id: str) -> Optional[Board]:
+    def get(self, board_id: str) -> Board | None:
         return self._boards.get(board_id)
 
     def all(self) -> list[Board]:
@@ -268,6 +268,6 @@ class BoardRegistry:
     def __len__(self) -> int:
         return len(self._boards)
 
-    def __iter__(self):  # type: ignore[override]
+    def __iter__(self) -> Iterator[Board]:
         return iter(self._boards.values())
 

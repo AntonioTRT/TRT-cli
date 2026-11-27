@@ -1,31 +1,36 @@
-"""Shared test configuration.
+"""Test isolation from real hardware.
 
-* Tests never touch the real ``~/.trt/boards.json``: the board cache is redirected to a temporary
-  file for every test (``TRT_CLI_BOARD_CACHE``).
-* Tests marked ``hardware`` need a real TRT board (Arduino Uno on COM4). They are skipped unless
-  ``TRT_HARDWARE_TESTS=1`` is set; they then use the real cache as before.
+Tests marked ``hardware`` talk to a real TRT board on a serial port and are skipped by default
+(``addopts = -m "not hardware"`` in pyproject.toml). Run them with:
+
+    pytest -m hardware                      # board at address 101 (Arduino Uno)
+    TRT_TEST_BOARD=201 pytest -m hardware   # another address, e.g. the STM32 board
+
+Every other test is isolated: it sees no serial ports and uses a temporary board cache, so a plain
+``pytest`` never opens a COM port or reads the user's ``~/.trt/boards.json``.
 """
 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
-HARDWARE_ENABLED = os.environ.get("TRT_HARDWARE_TESTS") == "1"
+HARDWARE_BOARD = os.environ.get("TRT_TEST_BOARD", "101")
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    if HARDWARE_ENABLED:
-        return
-    skip = pytest.mark.skip(reason="needs a real TRT board; set TRT_HARDWARE_TESTS=1 to run")
-    for item in items:
-        if "hardware" in item.keywords:
-            item.add_marker(skip)
+@pytest.fixture()
+def hardware_board() -> str:
+    """Address of the board used by hardware tests (TRT_TEST_BOARD, default 101)."""
+    return HARDWARE_BOARD
 
 
 @pytest.fixture(autouse=True)
-def isolated_board_cache(request: pytest.FixtureRequest, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    if "hardware" in request.keywords and HARDWARE_ENABLED:
+def _isolate_from_hardware(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    if request.node.get_closest_marker("hardware"):
         return
+    from trt.transport.serial_transport import SerialTransport
+
     monkeypatch.setenv("TRT_CLI_BOARD_CACHE", str(tmp_path / "boards.json"))
+    monkeypatch.setattr(SerialTransport, "available_ports", staticmethod(list))

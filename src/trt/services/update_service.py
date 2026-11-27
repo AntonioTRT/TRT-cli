@@ -4,7 +4,7 @@ Responsible for checking GitHub releases and coordinating CLI self-updates.
 The CLI application (trt-cli) and board firmware updates are INDEPENDENT:
 
     trt update            → updates the trt-cli Python package on this machine
-    trt board <id> update → updates firmware on a connected board (future)
+    trt board update <address> -> installs the firmware that matches the board HWID
 
 This module handles only the CLI side.
 
@@ -27,14 +27,11 @@ upgrade command.  For now all installation methods are scaffolded.
 
 from __future__ import annotations
 
-import re
-import subprocess
 import sys
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
-from trt.version import get_version, get_version_info
+from trt.version import get_version
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -86,9 +83,9 @@ class UpdateCheckResult:
 
     status: UpdateStatus
     current_version: str
-    latest_version: Optional[str] = None
+    latest_version: str | None = None
     release_url: str = GITHUB_RELEASES_URL
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     @property
     def is_update_available(self) -> bool:
@@ -111,7 +108,7 @@ class UpdateInstallResult:
 
     success: bool
     message: str
-    new_version: Optional[str] = None
+    new_version: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -130,24 +127,16 @@ def _parse_version(tag: str) -> tuple[int, ...]:
     Returns:
         Tuple of integers, e.g. (0, 2, 0).
     """
-    match = re.match(r"\d+(?:\.\d+)*", tag.lstrip("v"))  # drops "-beta.1" and "rc1" suffixes
-    if match is None:
+    clean = tag.lstrip("v").split("-")[0]  # strip "v" prefix and pre-release suffix
+    try:
+        return tuple(int(p) for p in clean.split("."))
+    except ValueError:
         return (0,)
-    return tuple(int(part) for part in match.group(0).split("."))
-
-
-def _is_prerelease(tag: str) -> bool:
-    """True for "1.0.0rc1", "1.0.0-beta.1" and similar."""
-    return re.fullmatch(r"v?\d+(?:\.\d+)*", tag) is None
 
 
 def _is_newer(candidate: str, baseline: str) -> bool:
     """Return True if *candidate* is strictly newer than *baseline*."""
-    candidate_version, baseline_version = _parse_version(candidate), _parse_version(baseline)
-    if candidate_version == baseline_version:
-        # 1.0.0 is newer than the 1.0.0rc1 you are running; the reverse is not an update.
-        return _is_prerelease(baseline) and not _is_prerelease(candidate)
-    return candidate_version > baseline_version
+    return _parse_version(candidate) > _parse_version(baseline)
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +227,7 @@ def check_for_update() -> UpdateCheckResult:
     )
 
 
-def install_update(target_version: Optional[str] = None) -> UpdateInstallResult:
+def install_update(target_version: str | None = None) -> UpdateInstallResult:
     """Install the latest (or a specific) version of trt-cli.
 
     Phase 1 (current): returns a descriptive mock result explaining that
@@ -279,7 +268,6 @@ def install_update(target_version: Optional[str] = None) -> UpdateInstallResult:
     #   )
     # ------------------------------------------------------------------
 
-    method = detect_install_method()
     cmd = UpdateCheckResult(
         status=UpdateStatus.UNKNOWN,
         current_version=get_version(),

@@ -61,7 +61,7 @@ def test_stm32(
     board_id: str | None = typer.Option(
         None,
         "--board-id",
-        help=f"TRT board address, e.g. 201 (default: discovered; {_BOARD_ID} if nothing is discovered)",
+        help=f"Board address to test, e.g. 201 for the current STM32 firmware. Default: discovered; {_BOARD_ID} (legacy PlatformIO image) if nothing is discovered",
     ),
 ) -> None:
     ports = [port] if port else SerialTransport.available_ports()

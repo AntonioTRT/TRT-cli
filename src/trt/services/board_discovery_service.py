@@ -28,6 +28,7 @@ from trt.protocol.serial_protocol_client import SerialProtocolClient
 from trt.protocol.v01 import decode_info_payload
 from trt.repositories.board_cache import SerialConnection, save_serial_connections
 from trt.repositories.board_repository import BoardRepository
+from trt.services.board_summary import META_FAMILY, mode_metadata, read_mode_state
 from trt.transport.serial_transport import SerialTransport
 
 
@@ -90,20 +91,23 @@ class BoardDiscoveryService:
                 version = client.send(GetVersionRequest(board_id=info.board_id or candidate_board_id))
                 capabilities = client.send(GetCapabilitiesRequest(board_id=info.board_id or candidate_board_id))
                 build = client.send(BuildIdRequest(board_id=info.board_id or candidate_board_id))
-                board_type = str(info.to_payload().get("board_type", "Unknown"))
+                # BoardInfoRequest is opcode 0x0003 (BOARD_VERSION), which answers the revision only.
+                revision = str(info.to_payload().get("board_type", "")) or "-"
             except (OSError, RuntimeError, TimeoutError, ValueError):
                 transport.close()
                 continue
+            board_type = self._read_info_name(transport, info.board_id or candidate_board_id)
+            application = self._read_mode(transport, info.board_id or candidate_board_id)
             transport.close()
 
             if not isinstance(capabilities, GetCapabilitiesResponse):
                 continue
 
-            return self._board_from_payload(
+            board = self._board_from_payload(
                 DiscoveredBoardPayload(
                     board_id=info.board_id or candidate_board_id,
                     board_type=board_type,
-                    revision="-",
+                    revision=revision,
                     firmware=str(version.to_payload().get("version", "")),
                     serial=str(build.to_payload().get("build_id", "")),
                     status=BoardStatus.READY.value,
@@ -112,8 +116,29 @@ class BoardDiscoveryService:
                     build_id=str(build.to_payload().get("build_id", "")),
                 )
             )
+            board.metadata.update(application)
+            return board
 
         return None
+
+    @staticmethod
+    def _read_mode(transport: SerialTransport, board_id: str) -> dict[str, str]:
+        """HWID and ACTIVE_MODE as board metadata; empty values when the firmware does not report them."""
+        try:
+            return mode_metadata(*read_mode_state(transport, board_id))
+        except (OSError, RuntimeError, TimeoutError, ValueError):
+            return mode_metadata(None, None)
+
+    @staticmethod
+    def _read_info_name(transport: SerialTransport, board_id: str) -> str:
+        """Board name from INFO (0x0004) field 0x01; "Unknown" if the firmware does not answer INFO."""
+        try:
+            frame = transport.exchange_command(0x0004, board_id)
+            if frame.command != 0x8003:
+                return "Unknown"
+            return decode_info_payload(frame.payload).get("board_type") or "Unknown"
+        except (OSError, RuntimeError, TimeoutError, ValueError):
+            return "Unknown"
 
     def _probe_stm32(self, transport: SerialTransport, board_id: str, port: str) -> Board | None:
         try:
@@ -133,7 +158,8 @@ class BoardDiscoveryService:
 
             info_fields = decode_info_payload(info.payload)
             capabilities = transport.decode_capabilities(capabilities_response.payload)
-            return self._board_from_payload(
+            application = self._read_mode(transport, discovered_id)
+            board = self._board_from_payload(
                 DiscoveredBoardPayload(
                     board_id=discovered_id,
                     board_type=info_fields.get("board_type", "Unknown"),
@@ -146,6 +172,9 @@ class BoardDiscoveryService:
                     build_id=build.payload.decode("utf-8", errors="replace"),
                 )
             )
+            board.metadata.update(application)
+            board.metadata[META_FAMILY] = info_fields.get("family", "")
+            return board
         except (OSError, RuntimeError, TimeoutError, ValueError):
             return None
         finally:

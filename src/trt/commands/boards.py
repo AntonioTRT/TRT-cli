@@ -1,21 +1,12 @@
-"""Boards command — list all known boards."""
+"""Boards command — list all known boards with the same status summary as `trt board info`."""
 
 from rich.console import Console
-from rich.table import Table
 
-from trt.core.models import BoardStatus
+from trt.commands.board_view import render_boards_table
 from trt.services.board_discovery_service import BoardDiscoveryService
+from trt.services.board_summary import summary_from_board
 
 console = Console()
-
-_STATUS_STYLE: dict[str, str] = {
-    BoardStatus.READY.value:         "bold green",
-    BoardStatus.CONNECTED.value:     "green",
-    BoardStatus.INITIALIZING.value:  "yellow",
-    BoardStatus.DISCONNECTED.value:  "dim",
-    BoardStatus.ERROR.value:         "bold red",
-    BoardStatus.OFFLINE.value:       "red",
-}
 
 
 def show_boards() -> None:
@@ -31,40 +22,8 @@ def show_boards() -> None:
         console.print()
         return
 
-    table = Table(
-        show_header=True,
-        header_style="bold bright_white",
-        border_style="dim",
-        title="[bold cyan]Connected Boards[/bold cyan]",
-    )
-    table.add_column("Board ID",   style="bold cyan",  min_width=10)
-    table.add_column("Type",       style="magenta",    min_width=12)
-    table.add_column("Revision",   style="white",      min_width=9)
-    table.add_column("Firmware",   style="white",      min_width=9)
-    table.add_column("Build ID",   style="white",      min_width=9)
-    table.add_column("Transport",  style="yellow",     min_width=12)
-    table.add_column("Status",     min_width=12)
-
-    for board in boards:
-        ident = board.identity
-        board_type = board.metadata.get("board_type", ident.board_type.value)
-        build_id = board.metadata.get("build_id", ident.serial or "-")
-        status_val = board.status.value
-        status_style = _STATUS_STYLE.get(status_val, "white")
-        transport_str = str(board.transport) if board.transport else "—"
-
-        table.add_row(
-            ident.board_id,
-            board_type,
-            ident.revision,
-            ident.firmware,
-            build_id,
-            transport_str,
-            f"[{status_style}]{status_val}[/{status_style}]",
-        )
-
-    console.print(table)
+    render_boards_table(console, [summary_from_board(board) for board in boards])
     console.print(
-        f"\n  [dim]{len(boards)} board(s) listed via TRT serial discovery.[/dim]\n"
+        f"\n  [dim]{len(boards)} board(s) found by serial discovery. "
+        "Details: trt board info <address>[/dim]\n"
     )
-

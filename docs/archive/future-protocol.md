@@ -1,5 +1,9 @@
 # TRT Protocol — Design Notes
 
+> **Historical design notes, superseded.** The implemented protocol is TRT V0.1 (TRT-core
+> `docs/protocol-v0.1-wire-format.md`); the frame described here (magic `TR`) was never implemented.
+
+
 > **Status: Planned — not yet implemented.**
 > Implementation will live in the `trt-protocol` repository.
 

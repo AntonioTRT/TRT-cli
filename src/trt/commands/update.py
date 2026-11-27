@@ -5,7 +5,7 @@ Scope:
     the developer's machine.  It is entirely separate from board firmware
     updates, which will be handled by:
 
-        trt board <id> update   (future command)
+        trt board update <address>   (board firmware, matched to the HWID)
 
 Usage:
     trt update                  Check for a newer version
@@ -13,13 +13,10 @@ Usage:
     trt update --check          Same as trt update (explicit check-only mode)
 """
 
-import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 
 from trt.services.update_service import (
-    InstallMethod,
     UpdateStatus,
     check_for_update,
     detect_install_method,
@@ -45,10 +42,10 @@ def run_update(
     method  = detect_install_method()
 
     console.print()
-    console.print("  [bold]Checking for updates…[/bold]")
+    console.print("  [bold]Checking for updates...[/bold]")
     console.print(f"  Current version : [cyan]{current}[/cyan]")
     console.print(f"  Install method  : [dim]{method.value}[/dim]")
-    console.print(f"  Checking         : [dim]GitHub releases (AntonioTRT/TRT-cli)[/dim]")
+    console.print("  Checking         : [dim]GitHub releases (AntonioTRT/TRT-cli)[/dim]")
     console.print()
 
     result = check_for_update()
@@ -59,11 +56,11 @@ def run_update(
     if result.status == UpdateStatus.UP_TO_DATE:
         if result.latest_version:
             console.print(
-                f"  [bold green]✓ Up to date.[/bold green]  "
+                f"  [bold green]Up to date.[/bold green]  "
                 f"Latest: [cyan]{result.latest_version}[/cyan]"
             )
         else:
-            console.print("  [bold green]✓ No update available.[/bold green]")
+            console.print("  [bold green]No update available.[/bold green]")
             if result.error_message:
                 console.print(f"  [dim]{result.error_message}[/dim]")
         console.print()
@@ -88,7 +85,7 @@ def run_update(
             _do_install(result.upgrade_command)
         elif not check_only:
             console.print(
-                f"  Run [bold cyan]trt update --install[/bold cyan] to install it.\n"
+                "  Run [bold cyan]trt update --install[/bold cyan] to install it.\n"
             )
         return
 
@@ -111,7 +108,7 @@ def run_update(
 
 def _do_install(upgrade_command: str) -> None:
     """Execute the install step and report results."""
-    console.print("  [bold]Installing update…[/bold]")
+    console.print("  [bold]Installing update...[/bold]")
     console.print()
 
     install_result = install_update()
@@ -123,7 +120,7 @@ def _do_install(upgrade_command: str) -> None:
             else ""
         )
         console.print(
-            f"  [bold green]✓ Update installed successfully.[/bold green]\n"
+            f"  [bold green]Update installed successfully.[/bold green]\n"
             f"{ver_str}"
         )
     else:

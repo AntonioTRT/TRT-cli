@@ -1,9 +1,20 @@
-"""Serial transport for minimal real TRT firmware transactions."""
+"""Serial transport for TRT V0.1 request/response transactions.
+
+Request/response synchronisation: boards send unsolicited event frames (HEARTBEAT, about once per
+second) on the same line. While waiting for a reply the transport skips event frames and stale replies
+(a reply whose sequence ID belongs to an earlier, timed-out request). A request that collides with a
+heartbeat can be lost on the board side (the frame is dropped); when the board is evidently alive
+(it sent frames, just not our reply) the request is sent again, up to ``retries`` times. A silent port
+fails after one attempt, so discovery stays fast on ports without a TRT board. Every command sent
+through this transport is a read-only query, so repeating it is safe.
+"""
 
 from __future__ import annotations
 
 import struct
+import time
 from dataclasses import dataclass
+from typing import Any
 
 from trt.protocol.models import (
     BoardCapabilitiesPayload,
@@ -39,7 +50,8 @@ class SerialTransport(Transport):
     _CRC_SIZE = 2
     _MAX_FRAME_SIZE = 256
     _FLAG_EVENT = 0x02
-    _MAX_SKIPPED_EVENTS = 8
+    # Extra attempts after a lost request (board alive but no reply). Internal tuning knob.
+    DEFAULT_RETRIES = 2
 
     _OPCODES: dict[ProtocolOperation, int] = {
         ProtocolOperation.GET_VERSION: 0x0002,
@@ -55,10 +67,17 @@ class SerialTransport(Transport):
         command: int
         payload: bytes
 
-    def __init__(self, port: str = "COM4", baudrate: int = 115200, timeout: float = 1.0) -> None:
+    def __init__(
+        self,
+        port: str = "COM4",
+        baudrate: int = 115200,
+        timeout: float = 1.0,
+        retries: int = DEFAULT_RETRIES,
+    ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
+        self.retries = max(0, retries)
         self._sequence_id = 0
         self._connection: serial.Serial | None = None
 
@@ -75,38 +94,59 @@ class SerialTransport(Transport):
         return self._to_response(request, decoded)
 
     def exchange_command(self, command: int, board_id: str | int) -> Frame:
-        """Exchange one V0.1 command and return its decoded response frame."""
+        """Send one V0.1 command and return its reply frame.
+
+        Within one attempt, frames are read until the reply with the request's sequence ID arrives or
+        ``timeout`` seconds pass; event frames and stale replies are skipped. If the attempt ends
+        without a reply but the board sent other frames, the request was lost and is sent again
+        (at most ``retries`` more times). Raises TimeoutError when no reply arrives.
+        """
         if serial is None:
             raise RuntimeError("pyserial is required for real serial TRT communication")
-
         parsed_board_id = self._parse_board_id(str(board_id))
-        sequence_id = self._next_sequence_id()
-        frame = self._encode_frame(
-            board_id=parsed_board_id,
-            sequence_id=sequence_id,
-            command=command,
-        )
         connection = self._get_connection()
-        connection.reset_input_buffer()
-        connection.write(frame)
-        connection.flush()
-        # Boards emit unsolicited event frames (heartbeat); skip them while waiting for the reply.
-        for _ in range(self._MAX_SKIPPED_EVENTS + 1):
-            raw_frame = self._read_raw_frame(connection)
-            if not raw_frame[3] & self._FLAG_EVENT:
-                break
-        else:
-            raise TimeoutError(f"No TRT response received from {self.port} (only event frames)")
-
-        decoded = self._decode_frame(raw_frame)
-        if decoded.sequence_id != sequence_id:
-            raise ValueError(
-                f"TRT response sequence mismatch on {self.port}: "
-                f"expected {sequence_id}, received {decoded.sequence_id}"
+        board_alive = False
+        tries = 0
+        for _ in range(1 + self.retries):
+            tries += 1
+            sequence_id = self._next_sequence_id()
+            connection.reset_input_buffer()
+            connection.write(
+                self._encode_frame(board_id=parsed_board_id, sequence_id=sequence_id, command=command)
             )
-        return decoded
+            connection.flush()
+            reply, alive = self._await_reply(connection, sequence_id)
+            if reply is not None:
+                return reply
+            board_alive = board_alive or alive
+            if not board_alive:
+                break  # nothing on the line: no TRT board here, do not retry
+        detail = " (only event frames)" if board_alive else ""
+        after = f" after {tries} attempts" if tries > 1 else ""
+        raise TimeoutError(f"No TRT response received from {self.port}{after}{detail}")
 
-    def _read_raw_frame(self, connection) -> bytes:
+    def _await_reply(self, connection: Any, sequence_id: int) -> tuple[Frame | None, bool]:
+        """Read frames until the reply to ``sequence_id`` or the timeout.
+
+        Returns (reply or None, whether any TRT frame arrived).
+        """
+        deadline = time.monotonic() + self.timeout
+        alive = False
+        while time.monotonic() < deadline:
+            try:
+                raw_frame = self._read_raw_frame(connection)
+            except TimeoutError:
+                return None, alive
+            alive = True
+            if raw_frame[3] & self._FLAG_EVENT:
+                continue  # heartbeat or other unsolicited event
+            decoded = self._decode_frame(raw_frame)
+            if decoded.sequence_id != sequence_id:
+                continue  # late reply to an earlier request
+            return decoded, alive
+        return None, alive
+
+    def _read_raw_frame(self, connection: Any) -> bytes:
         """Read one complete TRT frame, resynchronising on the sync word."""
         previous = b""
         for _ in range(self._MAX_FRAME_SIZE):
@@ -132,7 +172,7 @@ class SerialTransport(Transport):
         crc = connection.read(self._CRC_SIZE)
         if len(payload) != payload_length or len(crc) != self._CRC_SIZE:
             raise TimeoutError(f"Incomplete TRT response received from {self.port}")
-        return header + payload + crc
+        return bytes(header + payload + crc)
 
     def is_available(self) -> bool:
         return serial is not None

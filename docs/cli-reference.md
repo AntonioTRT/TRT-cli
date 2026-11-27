@@ -1,739 +1,388 @@
 # TRT CLI Reference
 
-Complete reference for all `trt` commands.
+Every `trt` command, its options, output and exit codes, for TRT-CLI 1.0.0 (Version 1.0.0 milestone,
+2026-11-26). Installation and first steps: [README](../README.md).
+
+## Contents
+
+- [Workflow and help levels](#workflow-and-help-levels)
+- [Concepts](#concepts)
+- [Board discovery](#board-discovery): `discover`, `boards`
+- [Board management](#board-management): `board info`, `board hwid`, `board mode`, `board update`, queries, `board capabilities`
+- [Monitoring](#monitoring): `listen`, `board listen`
+- [Development (STM32)](#development-stm32): `list-modes`, `build`, `flash`, `stm32 test`
+- [Information](#information): `help`, `version`, `update`
+- [Hidden commands](#hidden-commands)
+- [Exit codes](#exit-codes)
+- [Files and environment](#files-and-environment)
+- [Shell completion](#shell-completion)
 
 ---
 
-## Global Options
+## Workflow and help levels
 
-```
-trt --help                  Show help and exit
-trt --install-completion    Install shell completion
-trt --show-completion       Show completion script
-```
-
-## STM32 NUCLEO-L073RZ
-
-```powershell
-trt list-programs stm32 [--project-dir PATH]
-trt board <id|name|type|revision|version|build-id|runtime|active-program|uptime|transport> <board-id> [--port COM5]
-trt build stm32 <program> [--project-dir PATH]
-trt flash stm32 [program] [--project-dir PATH]
-trt flash stm32 --platformio [--port COM5] [--project-dir PATH]
-trt stm32 test [--port COM5] [--board-id 201]
-trt board info 2 [--port COM5]
+```text
+trt discover            find the boards on the serial ports
+trt boards              address, mode, HWID read / expected, status
+trt board info 201      one board in detail
+trt board hwid 201      which daughter board is connected
+trt board mode 201      which mode is installed
+trt board update 201    if MISMATCH: build, flash, reboot, verify
+trt boards              confirm MATCH
+trt listen              monitor the running board (Ctrl+C)
 ```
 
-In this CLI "board id" / `<board-id>` / the **Board ID** column mean the protocol `BOARD_ID` node address (101, 201, ...). That is not the Board ID of the hardware platform (mechanism TBD), not a HWID and not an Application ID; see `TRT-core/docs/identifiers.md`.
-
-`board <query> <board-id>` are read-only queries; each asks the board for one value it
-already knows and prints it (`--port` overrides the saved/discovered port):
-
-| Command | Source |
+| Command | Shows |
 |---|---|
-| `board id` | `BOARD_ID` (protocol node address) in the reply frame |
-| `board name` | INFO field 0x01 |
-| `board type` | INFO field 0x06 (board family: Arduino, STM32, ESP32, ...) |
-| `board revision` | BOARD_VERSION |
-| `board version` | FW_VERSION |
-| `board build-id` | BUILD_ID |
-| `board runtime` | RUNTIME (`RUNNING`) |
-| `board active-program` | ACTIVE_PROGRAM |
-| `board uptime` | UPTIME (`DD HH:MM:SS.mmm (N ms)`) |
-| `board transport` | the host's connection (port and baud rate); no firmware query |
-
-#### Which command to use
-
-| Command | Purpose | Source | Notes |
-|---|---|---|---|
-| `board info` | Everything at once: ID, port, revision, firmware, build ID, INFO fields, capabilities | live, 6 requests | Aggregates `id`, `name`, `type`, `revision`, `version`, `build-id`, `capabilities`; use it for a human overview |
-| `board version` | Firmware version only | live, FW_VERSION | For scripts |
-| `board build-id` | Build identifier only | live, BUILD_ID | Not part of INFO; unique among the single-value queries except via `board info` |
-| `board name` | Board name | live, INFO 0x01 | |
-| `board type` | Board family (Arduino, STM32, ESP32, ...) | live, INFO 0x06 | Distinct from `name` |
-| `board revision` | Hardware revision | live, BOARD_VERSION | |
-| `board id` | Confirms which `BOARD_ID` the board replies with | live, reply header | You already pass the ID in; `trt boards` lists IDs |
-| `board runtime` | TRT-Core runtime state | live, RUNTIME | Currently only `RUNNING` |
-| `board active-program` | Application on the board | live, ACTIVE_PROGRAM | Unique |
-| `board uptime` | Time since boot | live, UPTIME | Unique |
-| `board transport` | How the host reaches the board | host, saved/discovered connection | No firmware query |
-| `board capabilities` | Capability list | discovery scan, then render | Also shown in `board info` |
-| `board status` | Board status | discovery cache | See below |
-
-Overlaps that exist and are intentional or fixed by the protocol:
-
-- `board info` repeats what the single-value commands return; the single-value commands exist for scripting and quick checks.
-- On the wire, the firmware version is sent twice (FW_VERSION and INFO field 0x03), the revision twice (BOARD_VERSION and INFO field 0x02), and INFO fields 0x01 (name) and 0x05 (serial placeholder) carry the same string. The V0.1 identifiers are frozen, so these stay.
-- The decoded INFO key `board_type` holds the board *name* (V0.1 naming), while `board type` shows the *family*. `board info` prints the former as `INFO.BOARD_TYPE` and the latter as `INFO.FAMILY`.
-
-Findings that are not duplication but worth knowing:
-
-- `board status` reads the discovery cache (discovery records every found board as `ready`); it does not send STATUS to the board, unlike every other query. The firmware's STATUS reply is only exercised by `trt stm32 test`.
-- `board id` and `board runtime` carry little information: the first echoes the ID you supplied, the second can only say `RUNNING` because any reply proves the runtime is polling.
-
-`board info`, `board status` and `board capabilities` are unchanged. If the firmware does not
-provide a value (older firmware, or no clock / no active program declared), the command prints
-`unsupported` and exits with code 2; other failures exit with code 1. Build date and build time
-are not available in TRT-Core and have no command.
-
-`list-programs stm32` prints one application name per line, discovered from the
-files `Sources/apps/app_<id>_<name>.c` of the STM32CubeIDE project (sorted; read-only,
-it builds and flashes nothing). `<id>` is 4 hex digits. These names (or just the ID)
-are what `build stm32` and `flash stm32` accept. It exits with code 1 if none is found.
-
-`build stm32 [application]` builds the STM32CubeIDE project
-(`TRT-core/TRT-stm32/am modulation`) with TRT-Core included, in
-`build/<name>/` (CubeIDE's `Debug/` is not touched), via `cmake` and `cmake --build`.
-It copies the `.elf` to `artifacts/<name>/<name>.elf` and records it in
-`artifacts/latest.json`. It never flashes. Requires `cmake` and
-`arm-none-eabi-gcc` on `PATH` (the STM32CubeIDE toolchain).
-
-- With no application it builds the **common image** (`<name>` = `firmware`): at startup the
-  firmware reads the daughter-board HWID and runs the matching application. `--hwid 0x2` makes a
-  board with no HWID lines (the NUCLEO) report that HWID, to simulate a daughter board.
-- With an application (full name, or its ID such as `0001`) it builds a **development image**
-  that always runs that application and skips HWID selection
-  (`-DACTIVE_APP_OVERRIDE=<id>`). An unknown name lists the valid ones.
-
-`flash stm32` flashes an existing artifact and never builds: with no name the
-most recent build (`latest.json`), with a name (`firmware`, an application name or ID) that
-stored build, using `STM32_Programmer_CLI -c port=SWD -w <elf> -v -rst` (must be on `PATH`).
-If nothing is built it tells you to run `trt build stm32 [application]`.
-`flash stm32 --platformio` keeps the previous behaviour: it runs
-`python -m platformio run -d <TRT-stm32> -t upload` (`--port` applies only here).
-`stm32 test` discovers the board (same probe as `trt discover`) and uses its address; with several
-boards it lists them and requires `--board-id`, and with none it falls back to address `0x0002`.
-`--board-id` always skips discovery. It scans serial ports unless one is specified and sends all six
-TRT v0.1 requests at 115200 baud, 8N1. It checks PING for ACK `0x8001`,
-the five data commands for response `0x8003`, and decodes INFO, STATUS, and
-the capability identifier list. V0.1 CRC fields are emitted as `0x0000`,
-matching the current TRT-core encoder.
-
-Example test against the Nucleo's ST-LINK virtual COM port:
-
-```powershell
-trt stm32 test --port COM5
-```
-
-Discovery scans every serial COM port (without VID/PID filtering), tries the
-TRT v0.1 PING/ACK handshake before STM32 identity queries, and caches the protocol `BOARD_ID`,
-port, and 115200 baudrate in `%USERPROFILE%\.trt\boards.json`.
-`trt board info 2` resolves the cached port or performs a discovery scan;
-`--port COM5` bypasses port resolution. The info command reads PING, BOARD_VERSION,
-INFO, CAPABILITIES, FW_VERSION, and BUILD_ID. It exits non-zero if the device
-does not return valid protocol responses.
+| `trt` | Quick Start: the five workflow commands |
+| `trt --help` | All visible commands grouped: Board Discovery, Board Management, Monitoring, Development, Information |
+| `trt help` | Full reference: concepts, reading MATCH / MISMATCH, typical workflow, heartbeat, commands |
+| `trt <command> --help` | Options of one command |
 
 ---
 
-## Debug Flags
+## Concepts
 
-TRT CLI supports four debug verbosity levels applied via repeated `-d` flags.
-These are global options that can precede any command.
-
-> **Not yet implemented.** Defined here as the official behaviour specification.
-> See [trt-protocol.md § 10. Debug Verbosity Levels](trt-protocol.md#10-debug-verbosity-levels) for full examples.
-
-| Flag | Level | What is shown |
+| Term | Identifies | Example |
 |---|---|---|
-| *(none)* | 0 | Normal user-facing output only |
-| `-d` | 1 | Command execution trace (board, SEQ_ID) |
-| `-dd` | 2 | TX frame hex dump |
-| `-ddd` | 3 | TX frame + field decode + CLI→command mapping |
-| `-dddd` | 4 | TX frame + RX frame + full decode + interpreted response |
+| **Address** (board address) | The TRT node: how the CLI reaches a board, the number in every board command (`ADDRESS`). Not a hardware identifier. | `201` |
+| **HWID** | The daughter board: 4-bit family code read from ID pins at boot, shown as the pin pattern (bit 3 ... bit 0). | `0010` (= 2) |
+| **Board ID** | The carrier board, to select its profile. **Future**: not implemented (planned: ADC resistor divider). | - |
+| **Mode ID** | The firmware: mode `mode_<ID>_<name>`, the ID is the HWID the mode is written for, common to all platforms. | `mode_0002_analog` |
 
-**Level 0 (normal):**
-```bash
-trt board board1 version
-```
-```
-TRT Core 0.1.0
-```
+HWID codes (TRT_CHAINING_SPEC_v0.1, decision D-09) and modes:
 
-**Level 1 (`-d`):**
-```bash
-trt -d board board1 version
-```
-```
-[D1] Executing VERSION on board1  (BOARD_ID=0x0002, SEQ=0x0001)
-TRT Core 0.1.0
-```
+| HWID | Mode | | HWID | Meaning |
+|---|---|---|---|---|
+| `0000` | `mode_0000_base` (Base Mode) | | `0001` | Self-describing module (descriptor), no mode |
+| `0010` | `mode_0002_analog` | | `1000`-`1011` | Reserved families |
+| `0011` | `mode_0003_keypad` | | `1100` | `mode_0012_blink` (experimental, never production) |
+| `0100` | `mode_0004_encoder` | | `1101` | Experimental / custom |
+| `0101` | `mode_0005_display_i2c` | | `1110` | Factory test fixture |
+| `0110` | `mode_0006_display_spi` | | `1111` | Fault / invalid |
+| `0111` | `mode_0007_led` | | | |
 
-**Level 2 (`-dd`):**
-```bash
-trt -dd board board1 version
-```
-```
-[D2] TX ───────────────────────────────────────────
-  AA 55 01 00 02 00 01 00 01 00 00 00 XX XX
+**Base Mode (`0000`)** is the TRT recovery and maintenance runtime contained in every firmware image
+(discovery, information, HWID, heartbeat, update). A carrier without daughter board reads HWID `0000`
+and runs Base Mode alone.
 
-TRT Core 0.1.0
-```
+**Status** compares *HWID read from the hardware* with *the mode ID of the installed mode*:
 
-**Level 3 (`-ddd`):**
-```bash
-trt -ddd board board1 version
-```
-```
-[D3] TX ───────────────────────────────────────────
-  AA 55 01 00 02 00 01 00 01 00 00 00 XX XX
-
-[D3] Frame decode:
-  SYNC=AA55  VERSION=01  FLAGS=00  BOARD_ID=0x0002(board1)
-  SEQ_ID=0x0001  COMMAND=CMD_VERSION  LENGTH=0
-
-[D3] Command mapping:
-  CLI input : trt board board1 version
-  Category  : SYSTEM
-  Command   : CMD_VERSION
-
-TRT Core 0.1.0
-```
-
-**Level 4 (`-dddd`):**
-```bash
-trt -dddd board board1 version
-```
-```
-[D4] TX ───────────────────────────────────────────
-  AA 55 01 00 02 00 01 00 01 00 00 00 XX XX
-
-[D4] RX ───────────────────────────────────────────
-  AA 55 01 01 02 00 01 00 01 00 07 00 30 2E 31 2E 30 XX XX
-
-[D4] RX decode:
-  FLAGS=01(RESPONSE)  SEQ_ID=0x0001(match)  LENGTH=7
-  PAYLOAD="0.1.0"
-
-[D4] Decoded response: TYPE=DATA  VALUE="0.1.0"
-
-TRT Core 0.1.0
-```
-
-**Design notes:**
-- Debug output goes to `stderr`; command output goes to `stdout`
-- Scripts can suppress debug with `2>/dev/null` (Linux/macOS) or `2>$null` (PowerShell)
+| Status | Meaning | Action |
+|---|---|---|
+| `MATCH` | `0010 / 0010`: the mode fits the hardware | None |
+| `MISMATCH` | `0010 / 0000`: the mode is for other hardware | `trt board update <address>` |
+| `NO MODE` | `0010 / ----`: the firmware reports no `mode_<ID>_*` name (older image, Arduino/ESP32 sketch) | `trt board update <address>` (STM32) |
+| `NO HWID` | `---- / ...`: the firmware cannot read the HWID | One-time bootstrap, see [board update](#trt-board-update) |
 
 ---
 
-## trt help
+## Board discovery
 
-Display the full command tree with descriptions.
+### trt discover
 
-```bash
-trt help
+Scans every serial port (115200 baud, 8N1), identifies TRT boards and prints the `trt boards` table.
+The connection of each board (address, port, baud rate) is saved for later board commands.
+
+```text
+  Discovery complete.  Found 1 board(s).
+
+Connected Boards
+Addr  Name           Firmware       Mode              HWID         Status
+201   am-modulation  0.1.0 #000001  mode_0002_analog  0010 / 0010  MATCH
+HWID: read from hardware / expected by the installed mode
 ```
+
+With no board: `Found 0 board(s).` Discovery first sends PING + INFO; firmware without PING is found
+by a second probe (BOARD_VERSION, FW_VERSION, CAPABILITIES, BUILD_ID).
+
+### trt boards
+
+Rescans and prints the board table. Columns: `Addr` (address), `Name`, `Firmware` (version
+`#build`), `Mode`, `HWID` (read / expected), `Status`. Every board that needs action gets a line
+below the table, e.g. `Board 201: update required. Run trt board update 201`.
 
 ---
 
-## trt version
+## Board management
 
-Display the TRT CLI version.
+All board commands take the board `ADDRESS` (shown by `trt boards`, decimal `201` or hex `0xC9`) and,
+except `capabilities` and `listen`, `--port / -p COMx` to skip the saved connection and discovery.
 
-```bash
-trt version
+### trt board info
+
+```powershell
+trt board info 201 [--port COM9]
 ```
 
-**Output:**
-```
-TRT CLI
-Version: 1.0.0
-```
-
----
-
-## trt update
-
-Check for a newer version of the TRT CLI application.
-
-> **Scope:** This command updates the `trt-cli` Python package on your machine.
-> It is entirely independent from board firmware updates (`trt board <id> update`, future).
-
-```bash
-trt update                  # Check for updates
-trt update --install        # Check and install if available
-trt update --check          # Explicit check-only (same as no flags)
+```text
++------------------------ Board 201 -------------------------+
+|   Address        201                                       |
+|   Name           am-modulation (STM32)                     |
+|   Firmware       0.1.0  build 000001                       |
+|   Mode           mode_0002_analog                          |
+|   HWID           0010 / 0010  (read 2 / expected 2)        |
+|   Status         MATCH  mode matches the hardware          |
++------------------------------------------------------------+
++------------- Details -------------+
+|   Port            COM9            |
+|   Revision        STM32L073RZ     |
+|   Protocol        1               |
+|   Serial          am-modulation   |
+|   Capabilities    SYSTEM          |
++-----------------------------------+
 ```
 
-| Option | Description |
+The status block has the same values as the board's row in `trt boards`; the Details panel exists only
+here.
+
+### trt board hwid / trt board mode
+
+```powershell
+trt board hwid 201        #   201  hwid: 2
+trt board mode 201        #   201  mode: mode_0002_analog
+```
+
+`hwid` sends HWID (`0x000B`); `mode` sends ACTIVE_MODE (`0x000A`). `trt board active-program` is a
+hidden alias of `mode`.
+
+### trt board update
+
+```powershell
+trt board update 201 [--check] [--port COM9] [--project-dir PATH]
+```
+
+1. Reads HWID, installed mode and board family over one serial connection.
+2. Picks the mode `mode_<HWID>_*` from the TRT-core STM32 project.
+3. `MATCH`: prints `No update required.`, exit 0.
+4. Otherwise (or with `--check`, which stops here with exit 1): builds the mode, flashes it over
+   ST-LINK with verify and reset, waits up to 20 s for the board to answer, re-reads and verifies.
+
+```text
+  Board             201 (STM32, COM9)
+  HWID              0010 / 0000  MISMATCH  (read / expected)
+  Installed mode    mode_0000_base
+  Required mode     mode_0002_analog
+
+  MISMATCH - update required: mode_0000_base -> mode_0002_analog.
+  ... build and flash output ...
+  Waiting for the board to reboot...
+  Board             201 (STM32, COM9)
+  HWID              0010 / 0010  MATCH  (read / expected)
+  Installed mode    mode_0002_analog
+  Required mode     mode_0002_analog
+  Updated and verified: mode_0002_analog is active.
+```
+
+| Exit | Meaning |
 |---|---|
-| `--install` / `-i` | Download and install the latest version |
-| `--check` / `-c` | Check only, never prompt for install |
+| 0 | MATCH, or updated and verified |
+| 1 | Not MATCH with `--check`; no mode for the HWID (`No mode for HWID n`); non-STM32 board; build, flash or verification failure |
+| 2 | The firmware does not report a HWID; the bootstrap commands are printed |
 
-**Phase 1 output (current):**
-```
-  Checking for updates…
-  Current version : 1.0.0
-  Install method  : pip
-  Checking         : GitHub releases (AntonioTRT/TRT-cli)
+Bootstrap of a board whose firmware predates HWID support:
 
-  ✓ No update available.
-  GitHub release checking will be available in a future release.
-```
-
-**Phase 2 output (when update is available):**
-```
-  ╭─ Update available! ───────────────────────────────╮
-  │  Current version : 1.0.0                          │
-  │  Latest version  : 0.2.0                          │
-  │  https://github.com/AntonioTRT/TRT-cli/releases   │
-  ╰───────────────────────────────────────────────────╯
-
-  Run trt update --install to install it.
-```
-
-**GitHub API endpoint (Phase 2):**
-```
-GET https://api.github.com/repos/AntonioTRT/TRT-cli/releases/latest
-```
-
-**Supported install methods:**
-- `pip install --upgrade trt-cli` (standard pip)
-- `pipx upgrade trt-cli` (pipx managed)
-- `uv pip install --upgrade trt-cli` (uv managed)
-
-The install method is auto-detected at runtime.
-
----
-
-## trt listen
-
-Passively print every asynchronous message sent by TRT boards. Nothing is sent to the boards.
-
-```bash
-trt listen              # all serial ports, all boards
-trt board listen 101    # only board 101
-```
-
-Stop with Ctrl+C. `trt board listen <id>` needs a numeric `BOARD_ID` and ignores frames from other boards.
-
-```
-Board 101: HEARTBEAT
-Board 101: HEARTBEAT
-Board 101: HEARTBEAT
-```
-
-### Relationship with TRT-Core heartbeat
-
-Every TRT-Core board emits a HEARTBEAT event (FLAGS `0x02`, COMMAND `0x9001`) about once per second. `listen` receives and prints it. Other event frames are shown as `EVENT 0x<id> payload=<hex>`. Heartbeat only shows that the runtime is alive; it does not replace discovery (`trt discover`, `trt board <id> info`, `trt board <id> capabilities`). See the TRT-Core `docs/event-system.md`.
-
-### When to use it
-
-- Firmware validation: the firmware is running.
-- Flash validation: the board boots after flashing.
-- Runtime validation: the TRT runtime loop is alive.
-- Communication validation: the transport path works.
-- Development diagnostics.
-
-### Typical workflow
-
-1. Flash the board.
-2. Run `trt listen`. A `HEARTBEAT` line about every second confirms the board is alive (the first one can take about a second, because opening the port resets Arduino-type boards).
-3. Run `trt discover` or `trt board <id> info` to check identity and version.
-
-### Notes
-
-- Close other programs using the serial port first; only one program can hold a port.
-- Exit code is 1 if no serial port exists or none can be opened.
-- The simulator does not emit heartbeats.
-
----
-
-## trt boards
-
-List all boards currently known to TRT.
-
-```bash
-trt boards
-```
-
-**Output columns:** Board ID (the protocol `BOARD_ID`) · Type · Revision · Firmware · Build ID · Transport · Status
-
-**Example:**
-```
-╭──────────────── Connected Boards ────────────────╮
-│ Board ID │ Type     │ Rev │ Firmware │ Transport  │ Status    │
-│ 101      │ UNSPECIFIED │ - │ 0.1.0 │ 000004 │ usb:COM4 │ ready │
-╰──────────────────────────────────────────────────╯
-```
-
----
-
-## trt discover
-
-Force a rescan for connected boards on all active transports.
-
-```bash
+```powershell
+trt build stm32 mode_0000_base
+trt flash stm32
 trt discover
+trt board update 201
 ```
 
-Enumerates available serial ports, probes each port with TRT protocol frames, and lists TRT-compatible boards.
+Requires the TRT-core repository and the STM32 tools (see [Development](#development-stm32)).
+Supports STM32 boards only.
+
+### Single-value queries
+
+```powershell
+trt board <query> <address> [--port COMx]
+```
+
+| Query | Source | Example value |
+|---|---|---|
+| `id` | address in the reply frame | `201` |
+| `name` | INFO field 0x01 | `am-modulation` |
+| `type` | INFO field 0x06 (family) | `STM32` |
+| `revision` | BOARD_VERSION | `STM32L073RZ` |
+| `version` | FW_VERSION | `0.1.0` |
+| `build-id` | BUILD_ID | `000001` |
+| `runtime` | RUNTIME | `RUNNING` |
+| `uptime` | UPTIME | `00:01:23.456 (83456 ms)` |
+| `hwid` | HWID | `2` |
+| `mode` | ACTIVE_MODE | `mode_0002_analog` |
+| `transport` | the host's connection (no firmware query) | `serial (COM9, 115200 baud)` |
+
+Output: `  201  version: 0.1.0`. A query the firmware does not support prints `unsupported` and exits
+with 2; other failures exit with 1.
+
+### trt board capabilities
+
+```powershell
+trt board capabilities 201
+```
+
+Lists the capabilities the board advertised at discovery (`SYSTEM`, `GPIO`, `DAC`, ...).
 
 ---
 
-## trt board
+## Monitoring
 
-Operate on a specific board.  All sub-commands require a board ID (the protocol `BOARD_ID`).
+### trt listen / trt board listen
 
-```bash
-trt board <board_id> <sub-command> [options]
+```powershell
+trt listen                 # all boards on all serial ports
+trt board listen 201       # one board
 ```
 
-### trt board \<id\> info
+Prints what boards send on their own, without sending anything:
 
-Display board identity and firmware details.
+```text
+  Listening to all boards on COM9  (Ctrl+C to stop)
 
-```bash
-trt board 101 info
+Board 201: HEARTBEAT
+Board 201: HEARTBEAT
 ```
 
-### trt board \<id\> status
+Every TRT-Core board sends HEARTBEAT (event `0x9001`, FLAGS `0x02`) about once per second. It confirms
+that the firmware and TRT-Core are running and that the board -> PC link works; use it after flashing
+or rewiring. It does **not** prove that the board receives commands: heartbeats with failing commands
+mean the board is not receiving (reset it, or reflash with `trt board update`).
 
-Show current board operational status.
-
-```bash
-trt board 101 status
-```
-
-### trt board \<id\> reset
-
-Send a reset command to the board.
-
-```bash
-trt board board0 reset
-```
-
-### trt board \<id\> reboot
-
-Reboot the board into normal firmware.
-
-```bash
-trt board board0 reboot
-```
-
-### trt board \<id\> capabilities
-
-List all capabilities the board advertises.
-
-```bash
-trt board 101 capabilities
-```
-
-**Output:**
-```
-Capabilities — 101
-  gpio         ✓ yes
-  pwm          ✓ yes
-  adc          ✓ yes
-  dac          ✓ yes
-  i2c          ✓ yes
-  spi          ✓ yes
-  lcd          ✗ no
-  relay        ✗ no
-```
-
-### trt board \<id\> modules
-
-List firmware modules loaded on the board.
-
-```bash
-trt board board0 modules
-```
+Every board command handles heartbeats on the same line automatically: event frames and late replies
+to earlier requests are skipped, and a request lost to a heartbeat collision is sent again (up to two
+more times). `No TRT response received ... after 3 attempts (only event frames)` therefore means the
+board is alive but not answering. Other events print as
+`EVENT 0x<id> payload=<hex>`. Stop with Ctrl+C before running other commands: a serial port can be open
+in one program only.
 
 ---
 
-## trt board \<id\> gpio
+## Development (STM32)
 
-GPIO pin control.
+These commands use the STM32CubeIDE project in the TRT-core repository
+(`TRT-core/TRT-stm32/am modulation`). It is found when TRT-core is cloned next to TRT-CLI or when the
+command runs inside TRT-core; otherwise pass `--project-dir PATH` (the TRT-stm32 folder or the project).
 
-### gpio list
+Tools: `cmake`, `arm-none-eabi-gcc` (and `ninja` if present) for building, `STM32_Programmer_CLI` for
+flashing. When they are not on `PATH`, the CLI uses the copies bundled with STM32CubeIDE in its default
+install folder: `C:\ST\STM32CubeIDE_*` (Windows), `/opt/st/stm32cubeide_*` or `~/st/stm32cubeide_*`
+(Linux), `/Applications/STM32CubeIDE.app` (macOS).
 
-```bash
-trt board board0 gpio list
+### trt list-modes stm32
+
+```powershell
+trt list-modes stm32 [--project-dir PATH]
 ```
 
-### gpio read
+Prints the modes, one per line (`Sources/modes/mode_<ID>_<name>.c`): `mode_0000_base`,
+`mode_0002_analog`, `mode_0003_keypad`, `mode_0004_encoder`, `mode_0005_display_i2c`,
+`mode_0006_display_spi`, `mode_0007_led`, `mode_0012_blink`. Exit 1 if none is found.
+`trt list-programs` is a hidden alias.
 
-```bash
-trt board board0 gpio read <pin>
+### trt build stm32
+
+```powershell
+trt build stm32 <mode> [--project-dir PATH]
 ```
 
-| Argument | Type   | Description            |
-|----------|--------|------------------------|
-| `pin`    | string | Pin name e.g. `PA5`   |
+Builds one mode with TRT-Core included in `build/<mode>/` (CubeIDE's `Debug/` is untouched) with
+`-DACTIVE_MODE=MODE_<ID>_<NAME>`, stores `artifacts/<mode>/<mode>.elf` and records it in
+`artifacts/latest.json`. Never flashes. An unknown name lists the available modes.
 
-**Example:**
-```bash
-trt board board0 gpio read PA5
-# board0  gpio read  PA5  →  0
+### trt flash stm32
+
+```powershell
+trt flash stm32 [<mode>] [--project-dir PATH]
+trt flash stm32 --platformio [--port COMx] [--project-dir PATH]
 ```
 
-### gpio write
+Flashes a stored build and never builds: with no name the latest (`latest.json`), with a name that
+mode's build. Runs `STM32_Programmer_CLI -c port=SWD -w <elf> -v -rst` (write, verify, reset). If
+nothing is built it says `Run: trt build stm32 <mode>`.
+`--platformio` builds and uploads the legacy PlatformIO project (`TRT-stm32/src`, address 2) with
+`python -m platformio`; `--port` applies only there.
 
-```bash
-trt board board0 gpio write <pin> <value>
+### trt stm32 test
+
+```powershell
+trt stm32 test [--port COMx] --board-id 201
 ```
 
-| Argument | Type    | Description              |
-|----------|---------|--------------------------|
-| `pin`    | string  | Pin name e.g. `PA5`     |
-| `value`  | int 0–1 | Value to write: 0 or 1  |
-
-**Example:**
-```bash
-trt board board0 gpio write PA5 1
-```
+Sends the six TRT V0.1 commands (PING, FW_VERSION, BOARD_VERSION, INFO, STATUS, CAPABILITIES) at
+115200 baud, checks every reply and prints a table ending with
+`All six protocol commands completed successfully.` Without `--port` it tries every serial port.
+`--board-id` defaults to `0x0002` (legacy PlatformIO firmware); the current STM32 firmware answers as
+201, so pass `--board-id 201` (otherwise: `Response board id is 0x00C9; expected 0x0002`).
 
 ---
 
-## trt board \<id\> pwm
+## Information
 
-PWM channel control.
+### trt help, trt --help, trt
 
-### pwm list
+See [Workflow and help levels](#workflow-and-help-levels). Help text is plain ASCII and fits an
+80-column terminal.
 
-```bash
-trt board board0 pwm list
+### trt version
+
+```text
+ TRT CLI
+ Version:  1.0.0
 ```
 
-### pwm start
+### trt update
 
-```bash
-trt board board0 pwm start <channel>
+Updates **the TRT-CLI program itself**, not a board (board firmware: `trt board update`).
+
+```powershell
+trt update               # check (default)
+trt update --check       # same
+trt update --install     # check and install if an update exists
 ```
 
-### pwm stop
-
-```bash
-trt board board0 pwm stop <channel>
-```
-
-### pwm set
-
-Set frequency and duty cycle.
-
-```bash
-trt board board0 pwm set <channel> <frequency> <duty>
-```
-
-| Argument     | Type  | Description                   |
-|--------------|-------|-------------------------------|
-| `channel`    | int   | PWM channel number            |
-| `frequency`  | float | Frequency in Hz               |
-| `duty`       | float | Duty cycle 0.0 – 100.0 %     |
-
-**Example:**
-```bash
-trt board board0 pwm set 1 1000 50
-```
+Today it reports the installed version and install method (pip, pipx, uv); checking GitHub releases
+(`AntonioTRT/TRT-cli`) is not implemented yet, so it always ends with `No update available.`
 
 ---
 
-## trt board \<id\> adc
+## Hidden commands
 
-Analog-to-Digital Converter.
+Callable, but not shown by `trt`, `trt --help`, `trt help` or `trt board --help`:
 
-### adc list
-
-```bash
-trt board board0 adc list
-```
-
-### adc read
-
-```bash
-trt board board0 adc read <channel>
-```
-
-**Example:**
-```bash
-trt board board0 adc read 3
-# board0  adc read  ch=3  →  0 (0.00 mV)
-```
+| Command | Status |
+|---|---|
+| `trt list-programs ...`, `trt board active-program <address>` | Aliases of `trt list-modes`, `trt board mode` |
+| `trt lcd info / reset / clear / write "<text>"` | Simulated: prints `(mock: no hardware connected)` |
+| `trt led on / off / blink / brightness <n> / color <r> <g> <b>` | Simulated |
+| `trt board gpio list / read / write <address> ...`, `pwm`, `adc`, `dac`, `i2c`, `spi`, `debug`, `modules`, `reset`, `reboot` | Simulated; syntax `trt board <group> <command> <address> [args]`, e.g. `trt board gpio read 201 PA5` |
+| `trt board status <address>` | Reads the discovery cache (always `ready`); use `trt boards` / `trt board info` |
+| `trt protocol info / version` | Outdated placeholder describing an earlier protocol design; the implemented protocol is TRT-core V0.1 |
 
 ---
 
-## trt board \<id\> dac
+## Exit codes
 
-Digital-to-Analog Converter.
-
-### dac list
-
-```bash
-trt board board0 dac list
-```
-
-### dac read
-
-```bash
-trt board board0 dac read <channel>
-```
-
-### dac set
-
-```bash
-trt board board0 dac set <channel> <value>
-```
-
-| Argument   | Type | Description                         |
-|------------|------|-------------------------------------|
-| `channel`  | int  | DAC channel number                  |
-| `value`    | int  | Raw output value (0–4095 for 12-bit)|
-
-**Example:**
-```bash
-trt board board0 dac set 1 2048
-```
+| Code | Meaning |
+|---|---|
+| 0 | Success (for `board update`: MATCH or updated and verified) |
+| 1 | Failure: transport error, board not found, build/flash error, `board update --check` not MATCH |
+| 2 | The firmware does not support the requested query (`unsupported`), or `board update` on firmware without HWID; usage errors from the command parser |
 
 ---
 
-## trt board \<id\> i2c
+## Files and environment
 
-I2C master operations.
-
-### i2c scan
-
-Scan the I2C bus for device addresses.
-
-```bash
-trt board board0 i2c scan
-```
-
-### i2c read
-
-```bash
-trt board board0 i2c read [--addr 0x48] [--reg 0x00] [--len 1]
-```
-
-| Option   | Default | Description               |
-|----------|---------|---------------------------|
-| `--addr` | `0x48`  | I2C device address (hex)  |
-| `--reg`  | `0x00`  | Register address (hex)    |
-| `--len`  | `1`     | Number of bytes to read   |
-
-**Example:**
-```bash
-trt board board0 i2c read --addr 0x48 --reg 0x00 --len 2
-```
-
-### i2c write
-
-```bash
-trt board board0 i2c write [--addr 0x48] [--reg 0x00] [--data 0xAB]
-```
+| Item | Purpose |
+|---|---|
+| `%USERPROFILE%\.trt\boards.json` (`~/.trt/boards.json`) | Saved connections (address -> port, baud rate) from `trt discover` |
+| `TRT_CLI_BOARD_CACHE` | Use another file for the saved connections |
+| `TRT-core/TRT-stm32/am modulation/build/`, `artifacts/` | Build output of `trt build stm32` (git-ignored) |
 
 ---
 
-## trt board \<id\> spi
+## Shell completion
 
-SPI master operations.
-
-### spi transfer
-
-Full-duplex byte transfer.
-
-```bash
-trt board board0 spi transfer [--data 0x00]
-```
-
-### spi config
-
-Configure SPI bus parameters.
-
-```bash
-trt board board0 spi config [--baud 1000000] [--mode 0] [--msb/--lsb]
-```
-
----
-
-## trt board \<id\> debug
-
-Diagnostic and debug operations.
-
-### debug logs
-
-```bash
-trt board board0 debug logs [--follow]
-```
-
-### debug monitor
-
-```bash
-trt board board0 debug monitor
-```
-
-### debug shell
-
-```bash
-trt board board0 debug shell
-```
-
----
-
-## trt lcd
-
-LCD display control (HD44780-style over I2C).
-
-```bash
-trt lcd info
-trt lcd reset
-trt lcd clear
-trt lcd write "Hello TRT"
-trt lcd write "Hello" --line 0 --col 0
-```
-
-| Option   | Default | Description               |
-|----------|---------|---------------------------|
-| `--line` | `0`     | Target line (0-indexed)   |
-| `--col`  | `0`     | Start column (0-indexed)  |
-
----
-
-## trt led
-
-LED control (WS2812 / NeoPixel style).
-
-```bash
-trt led on
-trt led off
-trt led blink [--count 3] [--interval 500]
-trt led brightness <level>       # 0–100
-trt led color <red> <green> <blue>  # 0–255 each
-```
-
-**Examples:**
-```bash
-trt led color 255 0 0      # Red
-trt led color 0 255 0      # Green
-trt led color 0 0 255      # Blue
-trt led brightness 50
-trt led blink --count 5 --interval 250
-```
-
----
-
-## trt protocol
-
-TRT Protocol information.
-
-```bash
-trt protocol info       # Show protocol specification summary
-trt protocol version    # Show protocol version
-```
-
----
-
-## Shell Completion
-
-```bash
-# Bash
-trt --install-completion bash
-
-# Zsh
-trt --install-completion zsh
-
-# Fish
-trt --install-completion fish
-
-# PowerShell
-trt --install-completion powershell
+```powershell
+trt --install-completion     # install for the current shell
+trt --show-completion        # print the script to install it manually
 ```
